@@ -69,6 +69,10 @@ html, body {
   font-family: inherit;
 }
 .field input:focus, #join-code:focus { border-color: var(--gold-dim); }
+.field .nick-hint {
+  display: block; margin-top: 7px; min-height: 14px;
+  font-size: 11px; color: #7c9b8c; letter-spacing: .04em;
+}
 
 .lobby-actions { display: flex; flex-direction: column; gap: 12px; }
 
@@ -667,3 +671,20 @@ body.short .score-table td { padding: 4px 0; font-size: 12px; }
 body.short .score-table th { padding-bottom: 2px; }
 body.short .modal-actions { margin-top: 10px; }
 body.short .modal-actions .btn { height: 38px; font-size: 14px; }
+
+/* 横屏 / 矮屏：大厅压缩成一屏，不裁标题 */
+@media (max-height: 540px) {
+  #lobby { justify-content: flex-start; padding-top: max(12px, env(safe-area-inset-top)); overflow-y: auto; }
+  .brand { margin-bottom: 10px; }
+  .brand-tiles { display: none; }
+  .brand h1 { font-size: 20px; margin-bottom: 2px; }
+  .brand .sub { font-size: 10px; }
+  .field { margin-bottom: 10px; }
+  .field span { margin-bottom: 5px; font-size: 11px; }
+  .field input, #join-code { height: 40px; font-size: 15px; }
+  .field .nick-hint { margin-top: 4px; font-size: 10.5px; }
+  .lobby-actions { gap: 8px; }
+  .btn, .lobby-actions .btn { height: 40px; font-size: 14px; }
+  .join-row .btn { height: 40px; }
+  .fair-note { margin-top: 10px; font-size: 10px; }
+}

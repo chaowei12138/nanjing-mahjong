@@ -20,8 +20,80 @@ const MIME = {
   '.mp3': 'audio/mpeg'
 };
 
+/* ---------- 微信网页授权（可选：配置 WX_APPID / WX_SECRET 后启用） ---------- */
+const WX_APPID = process.env.WX_APPID || '';
+const WX_SECRET = process.env.WX_SECRET || '';
+const WX_ON = !!(WX_APPID && WX_SECRET);
+
+function reqBase(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  return proto + '://' + host;
+}
+function safeNext(n) {
+  if (!n || n[0] !== '/' || n[1] === '/' || n[1] === '\\') return '/';
+  return n.slice(0, 300);
+}
+function go(res, to) {
+  res.writeHead(302, { Location: to, 'Cache-Control': 'no-store' });
+  res.end();
+}
+function withParam(url, kv) {
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + kv;
+}
+async function wxNickname(code) {
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), 6000);
+  try {
+    const tk = await fetch('https://api.weixin.qq.com/sns/oauth2/access_token?appid=' + encodeURIComponent(WX_APPID) +
+      '&secret=' + encodeURIComponent(WX_SECRET) + '&code=' + encodeURIComponent(code) +
+      '&grant_type=authorization_code', { signal: ac.signal }).then(r => r.json());
+    if (!tk || !tk.access_token) throw new Error('token');
+    const u = await fetch('https://api.weixin.qq.com/sns/userinfo?access_token=' + encodeURIComponent(tk.access_token) +
+      '&openid=' + encodeURIComponent(tk.openid) + '&lang=zh_CN', { signal: ac.signal }).then(r => r.json());
+    return (u && u.nickname ? String(u.nickname) : '');
+  } finally { clearTimeout(to); }
+}
+
+function handleWx(req, res, pathname, q) {
+  if (pathname === '/wx/status') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ enabled: WX_ON }));
+    return true;
+  }
+  if (!WX_ON) { go(res, '/?wx=off'); return true; }
+
+  if (pathname === '/wx/auth') {
+    const next = safeNext(q.get('next') || '/');
+    const cb = reqBase(req) + '/wx/cb?next=' + encodeURIComponent(next);
+    go(res, 'https://open.weixin.qq.com/connect/oauth2/authorize?appid=' + encodeURIComponent(WX_APPID) +
+      '&redirect_uri=' + encodeURIComponent(cb) +
+      '&response_type=code&scope=snsapi_userinfo&state=nj#wechat_redirect');
+    return true;
+  }
+
+  if (pathname === '/wx/cb') {
+    const next = safeNext(q.get('next') || '/');
+    const code = q.get('code') || '';
+    if (!code) { go(res, withParam(next, 'wx=deny')); return true; }
+    wxNickname(code).then(function (name) {
+      if (!name) return go(res, withParam(next, 'wx=empty'));
+      go(res, withParam(next, 'n=' + encodeURIComponent(name)));
+    }).catch(function (e) {
+      console.error('[wx] oauth failed:', e && e.message);
+      go(res, withParam(next, 'wx=err'));
+    });
+    return true;
+  }
+
+  go(res, '/');
+  return true;
+}
+
 const server = http.createServer((req, res) => {
+  const qs = req.url.indexOf('?') >= 0 ? req.url.slice(req.url.indexOf('?') + 1) : '';
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
+  if (urlPath.startsWith('/wx/') && handleWx(req, res, urlPath, new URLSearchParams(qs))) return;
   if (urlPath === '/' || urlPath.startsWith('/r/')) urlPath = '/index.html';
   const file = path.join(PUBLIC, path.normalize(urlPath).replace(/^(\.\.[\/\\])+/, ''));
   fs.readFile(file, (err, data) => {

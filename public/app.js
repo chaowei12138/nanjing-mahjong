@@ -94,14 +94,89 @@
     }, 120);
   }
 
+  /* ---------- 昵称：微信授权 / 上次昵称 / 默认名 ---------- */
+  function setNickHint(t) {
+    var el = $('nick-hint');
+    if (el) el.textContent = t || '';
+  }
+  function trimNick(n) {
+    return Array.from(String(n || '').replace(/[\u0000-\u001f\u007f]/g, '')).slice(0, 8).join('');
+  }
+  function saveNick(n) {
+    try { localStorage.setItem('nj_nick', n); } catch (e) {}
+  }
+  function defaultNick() {
+    var d = Math.floor(1000 + Math.random() * 9000);
+    return '微信用户' + d;
+  }
+  function cleanWxParams() {
+    var q = new URLSearchParams(location.search);
+    if (!q.has('n') && !q.has('wx')) return;
+    q.delete('n'); q.delete('wx');
+    var qs = q.toString();
+    try { history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '')); } catch (e) {}
+  }
+  function initNick() {
+    var q = new URLSearchParams(location.search);
+    var wxName = q.get('n');
+    var wxFlag = q.get('wx');
+    var saved = '';
+    try { saved = localStorage.getItem('nj_nick') || ''; } catch (e) {}
+
+    // 1) 微信授权回调带回的昵称
+    if (wxName) {
+      var n1 = trimNick(wxName);
+      if (n1) {
+        $('nickname').value = n1;
+        saveNick(n1);
+        setNickHint(wxFlag === 'err' ? '读取微信昵称失败，可手动修改' : '已读取微信昵称，可修改');
+        cleanWxParams();
+        return;
+      }
+    }
+
+    // 2) 上次用过的昵称
+    if (saved) {
+      $('nickname').value = trimNick(saved);
+      setNickHint('已使用上次的昵称，可修改');
+      cleanWxParams();
+      return;
+    }
+
+    // 3) 首次进入：微信里尝试授权（仅当服务端配置了公众号）
+    var inWx = /MicroMessenger/i.test(navigator.userAgent);
+    if (inWx && !wxFlag) {
+      setNickHint('正在读取微信昵称…');
+      fetch('/wx/status').then(function (r) { return r.json(); }).then(function (st) {
+        if (st && st.enabled) {
+          var next = location.pathname + location.search;
+          location.replace('/wx/auth?next=' + encodeURIComponent(next));
+          return;
+        }
+        useDefault(inWx);
+      }).catch(function () { useDefault(inWx); });
+      return;
+    }
+
+    useDefault(inWx || !!wxFlag);
+    function useDefault(inWechat) {
+      var n2 = defaultNick();
+      $('nickname').value = n2;
+      saveNick(n2);
+      if (wxFlag === 'deny' || wxFlag === 'empty') setNickHint('未获得微信授权，先用默认昵称，可修改');
+      else if (inWechat) setNickHint('微信昵称授权未开启，先用默认昵称，可修改');
+      else setNickHint('已自动填好昵称，可修改');
+      cleanWxParams();
+    }
+  }
+
   /* ---------- 路由 ---------- */
   function boot() {
     if (window.NJFx) NJFx.init();
     document.querySelectorAll('.brand-tile').forEach(function (el) {
       el.innerHTML = NJTiles.svg(el.dataset.card);
     });
-    var saved = localStorage.getItem('nj_nick');
-    if (saved) { $('nickname').value = saved; }
+    initNick();
 
     fitBoard();
     window.addEventListener('resize', fitBoard);
@@ -186,7 +261,7 @@
     var room = new URLSearchParams(location.search).get('room');
     if (room) {
       $('join-code').value = room.toUpperCase();
-      if (saved) setTimeout(joinRoom, 200);
+      setTimeout(joinRoom, 260);
     }
   }
 
