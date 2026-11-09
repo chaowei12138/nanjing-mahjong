@@ -15,9 +15,10 @@
     <div class="lobby-inner">
       <div class="brand">
         <div class="brand-tiles">
-          <span class="mini-tile red">發</span>
-          <span class="mini-tile green">中</span>
-          <span class="mini-tile blue">萬</span>
+          <div class="brand-tile" data-card="h2"></div>
+          <div class="brand-tile" data-card="h1"></div>
+          <div class="brand-tile" data-card="w5"></div>
+          <div class="brand-tile" data-card="t1"></div>
         </div>
         <h1>南京麻将</h1>
         <p class="sub">144 张 · 可碰可杠 · 花牌计番</p>
@@ -27,6 +28,16 @@
         <span>你的昵称</span>
         <input id="nickname" maxlength="8" placeholder="给自己起个名" autocomplete="off">
       </label>
+
+      <div class="field">
+        <span>每人初始积分</span>
+        <div class="chips" id="points-chips">
+          <button class="chip" data-points="500">500</button>
+          <button class="chip active" data-points="1000">1000</button>
+          <button class="chip" data-points="2000">2000</button>
+          <button class="chip" data-points="5000">5000</button>
+        </div>
+      </div>
 
       <div class="lobby-actions">
         <button id="btn-create" class="btn primary">
@@ -56,7 +67,7 @@
         <button id="btn-copy" class="btn primary">复制邀请链接</button>
         <button id="btn-start" class="btn">开始游戏</button>
       </div>
-      <p class="hint">把链接发到微信群，好友点开即可入座。不足 4 人由 AI 补位。</p>
+      <p class="hint" id="room-hint">把链接发到微信群，好友点开即可入座。不足 4 人由 AI 补位。</p>
     </div>
   </section>
 
@@ -65,7 +76,9 @@
     <div class="board">
       <div class="topbar">
         <span id="round-info">东 1 局</span>
+        <span id="my-score" class="my-score">1000 分</span>
         <span id="wall-info">余 0</span>
+        <button id="btn-sound" class="sound-btn" title="背景音乐">♪</button>
         <button id="btn-fair" class="fair-btn">公平性</button>
       </div>
 
@@ -103,10 +116,12 @@
       <div class="seat me" id="p0">
         <div class="meldrow" id="p0-melds"></div>
         <div class="flowerrow" id="p0-flowers"></div>
-        <div class="handrow" id="p0-hand"></div>
         <div class="actionbar" id="actions"></div>
+        <div class="handrow" id="p0-hand"></div>
       </div>
     </div>
+    <div id="fx-layer" class="fx-layer"></div>
+    <canvas id="fx-canvas" class="fx-canvas"></canvas>
   </section>
 
   <!-- ========== 结算 ========== -->
@@ -150,6 +165,9 @@
 </div>
 <script src="core.js"></script>
 <script src="rng.js"></script>
+<script src="tiles.js"></script>
+<script src="audio.js"></script>
+<script src="fx.js"></script>
 <script src="game.js"></script>
 <script src="app.js"></script>
 </body>

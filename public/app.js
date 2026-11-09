@@ -7,11 +7,20 @@
 
   var mode = 'solo';
   var soloGame = null;
+  var soloScores = null, soloRound = 0, soloDealer = 0;
   var ws = null, mySeat = 0, myId = null, isHost = false;
   var currentView = null;
   var selectedIdx = -1;
   var lastResult = null;
   var autoAdvanced = false;
+  var prevMelds = [0, 0, 0, 0], prevRound = -1;
+  var fxGuard = '';
+
+  var startPoints = 1000;
+  try {
+    var _p = parseInt(localStorage.getItem('nj_points'), 10);
+    if (_p > 0) startPoints = _p;
+  } catch (e) {}
 
   /* ---------- 工具 ---------- */
   function show(id) {
@@ -33,40 +42,64 @@
   function makeTile(card, size) {
     var el = document.createElement('div');
     el.className = 'tile suit-' + card[0] + (size ? ' ' + size : '');
-    var n = parseInt(card.slice(1), 10);
-    var nEl = document.createElement('span');
-    nEl.className = 'tn';
-    if (card[0] === 'f') {
-      nEl.textContent = ['东', '南', '西', '北'][n - 1];
-      el.appendChild(nEl);
-    } else if (card[0] === 'h') {
-      nEl.textContent = n <= 3 ? ['中', '发', '白'][n - 1] : FLOWER[n - 4];
-      el.appendChild(nEl);
-    } else {
-      nEl.textContent = CN[n];
-      var sEl = document.createElement('span');
-      sEl.className = 'ts';
-      sEl.textContent = card[0] === 'w' ? '萬' : card[0] === 't' ? '条' : '筒';
-      el.appendChild(nEl);
-      el.appendChild(sEl);
-    }
+    el.innerHTML = NJTiles.svg(card);
     return el;
   }
   function makeBack(size) {
     var el = document.createElement('div');
     el.className = 'tile back' + (size ? ' ' + size : '');
+    el.innerHTML = NJTiles.backSvg();
     return el;
   }
 
   /* ---------- 路由 ---------- */
   function boot() {
+    if (window.NJFx) NJFx.init();
+    document.querySelectorAll('.brand-tile').forEach(function (el) {
+      el.innerHTML = NJTiles.svg(el.dataset.card);
+    });
     var saved = localStorage.getItem('nj_nick');
     if (saved) { $('nickname').value = saved; }
+
+    // 积分档位
+    var chips = document.querySelectorAll('#points-chips .chip');
+    chips.forEach(function (c) {
+      if (parseInt(c.dataset.points, 10) === startPoints) {
+        chips.forEach(function (x) { x.classList.remove('active'); });
+        c.classList.add('active');
+      }
+      c.onclick = function () {
+        chips.forEach(function (x) { x.classList.remove('active'); });
+        c.classList.add('active');
+        startPoints = parseInt(c.dataset.points, 10);
+        try { localStorage.setItem('nj_points', startPoints); } catch (e) {}
+        NJAudio.sfx('tap');
+      };
+    });
+
+    // 音效开关
+    var sb = $('btn-sound');
+    if (sb) {
+      sb.textContent = NJAudio.isOn() ? '♪' : '♪̸';
+      sb.classList.toggle('off', !NJAudio.isOn());
+      sb.onclick = function () {
+        var on = NJAudio.toggle();
+        sb.textContent = on ? '♪' : '♪̸';
+        sb.classList.toggle('off', !on);
+        toast(on ? '音乐已开启' : '音乐已关闭');
+      };
+    }
+    // 首次交互解锁音频（浏览器自动播放策略）
+    var unlock = function () {
+      NJAudio.unlock();
+      document.removeEventListener('pointerdown', unlock);
+    };
+    document.addEventListener('pointerdown', unlock);
 
     $('btn-create').onclick = function () {
       localStorage.setItem('nj_nick', nick());
       if (!ws || ws.readyState > 1) connect();
-      sendWhenOpen({ t: 'create', name: nick() });
+      sendWhenOpen({ t: 'create', name: nick(), points: startPoints });
     };
     $('btn-join').onclick = joinRoom;
     $('join-code').onkeydown = function (e) { if (e.key === 'Enter') joinRoom(); };
@@ -155,8 +188,7 @@
       if (!m.view.over) $('result').classList.remove('show');
       render(m.view);
       if (m.view.over && m.view.result) {
-        lastResult = m.view.result;
-        showResult(m.view.result, m.view);
+        presentResult(m.view.result, m.view);
       }
       return;
     }
@@ -177,6 +209,10 @@
       nm.textContent = s ? s.name : '等待好友加入';
       d.appendChild(idx); d.appendChild(nm);
       if (s) {
+        var sc = document.createElement('span');
+        sc.className = 'sc';
+        sc.textContent = ((m.scores && m.scores[i] != null) ? m.scores[i] : m.points) + ' 分';
+        d.appendChild(sc);
         var tag = document.createElement('span');
         tag.className = 'tag' + (s.isBot ? ' bot' : '');
         tag.textContent = s.isBot ? 'AI' : (s.connected ? (isHost && i === 0 ? '房主' : '在线') : '离线');
@@ -184,20 +220,30 @@
       }
       list.appendChild(d);
     });
+    var hint = $('room-hint');
+    if (hint) hint.textContent = '每人初始 ' + (m.points || startPoints) + ' 分 · 1 番 = 1 分。把链接发到微信群，好友点开即可入座；不足 4 人由 AI 补位。';
     $('btn-start').style.display = isHost ? 'flex' : 'none';
     $('btn-start').textContent = m.started ? '进行中' : '开始游戏';
   }
 
   /* ---------- 单机 ---------- */
-  function startSolo() {
+  function startSolo(keep) {
     localStorage.setItem('nj_nick', nick());
     mode = 'solo';
     mySeat = 0;
     var n = nick();
+    if (!keep || !soloScores) {
+      soloScores = [startPoints, startPoints, startPoints, startPoints];
+      soloRound = 0; soloDealer = 0;
+    }
+    soloRound++;
+    prevMelds = [0, 0, 0, 0]; prevRound = -1; resultKey = '';
     soloGame = NJGame.createGame({
       names: [n, '小南', '阿京', '老陵'],
       bots: [false, true, true, true],
-      dealer: 0
+      dealer: soloDealer,
+      round: soloRound,
+      scores: soloScores.slice()
     });
     currentView = NJGame.viewFor(soloGame, 0);
     show('table');
@@ -210,8 +256,10 @@
     currentView = NJGame.viewFor(soloGame, 0);
     render(currentView);
     if (soloGame.over) {
-      lastResult = currentView.result;
-      showResult(currentView.result, currentView);
+      soloScores = soloGame.players.map(function (p) { return p.score; });
+      var r = currentView.result;
+      if (r && r.type !== 'draw') soloDealer = r.winner;
+      presentResult(r, currentView);
       return;
     }
     var seat = NJGame.waitingSeat(soloGame);
@@ -228,13 +276,46 @@
 
   function again() {
     $('result').classList.remove('show');
-    if (mode === 'solo') { startSolo(); return; }
+    if (mode === 'solo') { startSolo(true); return; }
     if (ws) sendWhenOpen({ t: 'again' });
   }
 
   /* ---------- 渲染牌桌 ---------- */
+  var prevSigs = ['', '', '', ''];
+  function meldSig(melds) {
+    return (melds || []).map(function (m) { return m.type + ':' + (m.card || ''); }).join('|');
+  }
+  function detectMelds(v) {
+    if (prevRound !== v.round) {
+      prevRound = v.round;
+      prevSigs = v.players.map(function (p) { return meldSig(p.melds); });
+      return;
+    }
+    v.players.forEach(function (p, i) {
+      var sig = meldSig(p.melds);
+      if (sig === prevSigs[i]) return;
+      var before = prevSigs[i], melds = p.melds || [];
+      prevSigs[i] = sig;
+      if (!melds.length) return;
+      var last = melds[melds.length - 1];
+      var added = melds.length > (before ? before.split('|').length : 0);
+      var isGang = last.type === 'gang' || last.type === 'angang' || last.type === 'bugang';
+      var becameGang = !added && /peng/.test(before) && last.type === 'bugang';
+      if (!added && !becameGang) return;
+      var nm = last.card ? NJ.cardName(last.card) : '暗杠';
+      if (last.type === 'peng') {
+        NJFx.peng(nm + ' · ' + p.name + ' 碰');
+        NJAudio.sfx('peng');
+      } else if (isGang) {
+        NJFx.gang(nm + ' · ' + p.name + (last.type === 'angang' ? ' 暗杠' : last.type === 'bugang' ? ' 补杠' : ' 杠'));
+        NJAudio.sfx('gang');
+      }
+    });
+  }
+
   function render(v) {
     var me = v.seat;
+    detectMelds(v);
     var seats = {
       top: (me + 2) % 4,
       left: (me + 3) % 4,
@@ -259,10 +340,20 @@
       if (!root) return;
       root.classList.toggle('active', !v.over && v.turn === si);
       root.querySelector('.pname').textContent = s.name;
-      root.querySelector('.pscore').textContent = s.score > 0 ? '+' + s.score : s.score;
+      var fl = (s.flowers || []).length;
+      root.querySelector('.pscore').textContent = s.score + (fl ? ' · 花' + fl : '');
+      root.querySelector('.pscore').classList.toggle('neg-score', s.score < 0);
       var av = root.querySelector('.avatar');
       av.textContent = s.name.charAt(0);
     });
+
+    var mine = v.players[me];
+    var ms = $('my-score');
+    if (ms) {
+      var mf = (v.flowers || []).length;
+      ms.textContent = mine.score + ' 分' + (mf ? ' · 花' + mf : '');
+      ms.classList.toggle('neg', mine.score < 0);
+    }
 
     // 对家
     var top = v.players[seats.top];
@@ -277,7 +368,6 @@
       }
     }
     renderMelds($('p2-melds'), top.melds, false, 'xxs');
-    renderFlowers($('p2-flowers'), top.flowers);
 
     // 左右
     renderSideBacks($('p1-backs'), v.players[seats.left].handCount);
@@ -293,7 +383,6 @@
 
     // 自己
     renderMelds($('p0-melds'), v.melds, true, 'sm');
-    renderFlowers($('p0-flowers'), v.flowers);
     renderHand(v);
     renderActions(v);
   }
@@ -368,6 +457,7 @@
       if (v.ting && v.ting[c]) t.classList.add('ting');
       if (canAct) {
         t.addEventListener('click', function () {
+          NJAudio.sfx('tap');
           if (selectedIdx === idx) { playTile(c); }
           else { selectedIdx = idx; renderHand(v); }
         });
@@ -414,6 +504,7 @@
 
   function playTile(card) {
     selectedIdx = -1;
+    NJAudio.sfx('tap');
     if (mode === 'solo') {
       var r = NJGame.discard(soloGame, 0, card);
       if (r.err) { toast(r.err); return; }
@@ -424,6 +515,22 @@
   }
 
   /* ---------- 结算 ---------- */
+  var resultTimer = null, resultKey = '';
+
+  function presentResult(r, v) {
+    if (!r) return;
+    var key = (r.round || 0) + '-' + r.type + '-' + (r.winner == null ? '-' : r.winner) + '-' + r.total;
+    if (resultKey === key) return;
+    resultKey = key;
+    lastResult = r;
+    if (r.type !== 'draw') {
+      NJFx.hu((r.type === 'zimo' ? '自摸' : '点炮') + ' · ' + r.total + ' 番');
+      NJAudio.sfx('hu');
+    }
+    clearTimeout(resultTimer);
+    resultTimer = setTimeout(function () { showResult(r, v); }, r.type === 'draw' ? 250 : 1150);
+  }
+
   function showResult(r, v) {
     if (!r) return;
     var againBtn = $('btn-again');
@@ -440,7 +547,7 @@
     var body = $('result-body');
     if (r.type === 'draw') {
       title.textContent = '荒庄';
-      body.innerHTML = '<p>牌墙摸完，本局无人胡牌，庄家连庄。</p>';
+      body.innerHTML = '<p>牌墙摸完，本局无人胡牌，庄家连庄，积分不变。</p>';
       $('result').classList.add('show');
       return;
     }
@@ -449,22 +556,30 @@
     title.textContent = isMe ? '你胡了！' : (winner.name + ' 胡牌');
     var ev = r.ev || {};
     var fans = (ev.fans || []).map(function (f) {
-      return '<span class="fan">' + f.name + (f.pt ? ' +' + f.pt : '') + '</span>';
+      return '<span class="fan">' + f.name + (f.pt ? ' <b>+' + f.pt + '</b>' : '') + '</span>';
     }).join('');
     if (!fans) fans = '<span class="fan">平胡</span>';
+    var fanPts = (ev.fans || []).reduce(function (a, f) { return a + (f.pt || 0); }, 0);
 
     var html = '';
-    html += '<div class="res-win">' + (r.type === 'zimo' ? '自摸' : '点炮 · 出自 ' + v.players[r.loser].name) + ' · ' + r.total + ' 花</div>';
+    html += '<div class="res-fanbox">' +
+      '<div class="res-fan"><b>' + r.total + '</b><i>番</i></div>' +
+      '<div class="res-kind">' + (r.type === 'zimo'
+        ? '自摸 · 三家各付 ' + r.total + ' 分'
+        : '点炮 · ' + v.players[r.loser].name + ' 一家付 ' + r.total + ' 分') + '</div>' +
+      '</div>';
     html += '<div class="fan-list">' + fans + '</div>';
-    html += '<div style="font-size:11.5px;color:#8ba396">硬花 ' + (ev.hard || 0) + ' 张 · 软花 ' + (ev.soft || 0) + ' 花</div>';
+    html += '<div class="res-sub">底 20 ＋ 硬花 ' + (ev.hard || 0) + ' ＋ 软花 ' + (ev.soft || 0) +
+      ' ＋ 番型 ' + fanPts + ' ＝ <b>' + r.total + '</b> 番</div>';
 
-    html += '<table class="score-table">';
+    html += '<table class="score-table"><thead><tr><th>玩家</th><th>本局</th><th>结余</th></tr></thead><tbody>';
     v.players.forEach(function (p, i) {
       var d = r.delta[i];
       html += '<tr><td>' + p.name + (i === v.seat ? '（你）' : '') + '</td><td class="' +
-        (d > 0 ? 'pos' : d < 0 ? 'neg' : '') + '">' + (d > 0 ? '+' : '') + d + '</td></tr>';
+        (d > 0 ? 'pos' : d < 0 ? 'neg' : '') + '">' + (d > 0 ? '+' : '') + d + '</td><td class="' +
+        (p.score < 0 ? 'neg' : '') + '">' + p.score + '</td></tr>';
     });
-    html += '</table>';
+    html += '</tbody></table>';
     body.innerHTML = html;
     $('result').classList.add('show');
   }

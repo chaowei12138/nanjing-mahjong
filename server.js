@@ -42,10 +42,11 @@ function genCode() {
   }
 }
 
-function newRoom() {
+function newRoom(points) {
+  const p = Math.max(100, Math.min(100000, parseInt(points, 10) || 1000));
   return {
     code: genCode(), seats: [null, null, null, null],
-    hostId: null, game: null, scores: [0, 0, 0, 0],
+    hostId: null, game: null, scores: [p, p, p, p], points: p,
     round: 0, dealer: 0, timer: null, started: false
   };
 }
@@ -53,8 +54,9 @@ function newRoom() {
 function roomInfo(room) {
   return {
     t: 'room', code: room.code, started: room.started,
-    hostId: room.hostId,
-    seats: room.seats.map((s, i) => s ? { seat: i, name: s.name, isBot: s.isBot, connected: s.connected } : null)
+    hostId: room.hostId, points: room.points,
+    scores: room.scores.slice(),
+    seats: room.seats.map((s, i) => s ? { seat: i, name: s.name, isBot: s.isBot, connected: s.connected, score: room.scores[i] } : null)
   };
 }
 
@@ -185,7 +187,7 @@ function handle(ws, msg) {
 }
 
 function doCreate(ws, msg) {
-  const room = newRoom();
+  const room = newRoom(msg.points);
   room.hostId = ws.id;
   const name = String(msg.name || '玩家').slice(0, 8);
   room.seats[0] = { name, isBot: false, ws, connected: true };

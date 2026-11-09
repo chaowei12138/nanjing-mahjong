@@ -326,7 +326,11 @@
       players: state.players.map(function (pl, i) {
         return {
           seat: i, name: pl.name, handCount: pl.hand.length,
-          melds: pl.melds, flowers: pl.flowers, river: pl.river,
+          melds: pl.melds.map(function (m) {
+            if (i !== seat && m.type === 'angang') return { type: 'angang', card: null, from: m.from };
+            return m;
+          }),
+          flowers: pl.flowers, river: pl.river,
           score: pl.score, isBot: pl.isBot, connected: pl.connected
         };
       }),
