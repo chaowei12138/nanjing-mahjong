@@ -78,6 +78,8 @@
         <span id="round-info">东 1 局</span>
         <span id="my-score" class="my-score">1000 分</span>
         <span id="wall-info">余 0</span>
+        <button id="btn-pause" class="mini-btn" title="暂停牌局">暂停</button>
+        <button id="btn-voice" class="mini-btn" title="报牌女声">报牌</button>
         <button id="btn-sound" class="sound-btn" title="背景音乐">♪</button>
         <button id="btn-fair" class="fair-btn">公平性</button>
       </div>
@@ -85,19 +87,22 @@
       <div class="seat top" id="p2">
         <div class="avatar-row"><span class="avatar">对</span><span class="pname">对家</span><span class="pscore">0</span></div>
         <div class="backrow" id="p2-back"></div>
-        <div class="meldrow" id="p2-melds"></div>
+        <div class="meldrow mini" id="p2-melds"></div>
+        <div class="flowerrow" id="p2-flowers"></div>
       </div>
 
       <div class="seat left" id="p1">
         <div class="avatar-row"><span class="avatar">上</span><span class="pname">上家</span><span class="pscore">0</span></div>
         <div class="side-backs" id="p1-backs"></div>
         <div class="meldcol" id="p1-melds"></div>
+        <div class="flowerrow col" id="p1-flowers"></div>
       </div>
 
       <div class="seat right" id="p3">
         <div class="avatar-row"><span class="avatar">下</span><span class="pname">下家</span><span class="pscore">0</span></div>
         <div class="side-backs" id="p3-backs"></div>
         <div class="meldcol" id="p3-melds"></div>
+        <div class="flowerrow col" id="p3-flowers"></div>
       </div>
 
       <div class="center">
@@ -107,24 +112,41 @@
         <div class="river bottom" id="river0"></div>
         <div class="center-panel">
           <div id="center-turn">等待</div>
+          <div class="turnclock" id="turnclock">
+            <div class="tc-track"><i id="tc-fill"></i></div>
+            <span id="tc-txt">2:00</span>
+          </div>
           <div id="center-wall">144</div>
         </div>
         <div id="toast" class="toast"></div>
       </div>
 
-      <div class="flowerstrip" id="p1-flowers"></div>
-      <div class="flowerstrip" id="p3-flowers"></div>
-      <div class="flowerstrip" id="p2-flowers"></div>
+      <div class="said" id="said"></div>
+
       <div class="seat me" id="p0">
         <div class="flowerrow" id="p0-flowers"></div>
         <div class="meldrow" id="p0-melds"></div>
         <div class="actionbar" id="actions"></div>
         <div class="handrow" id="p0-hand"></div>
       </div>
+
+      <div id="pausebox" class="pausebox">
+        <div class="pb-card">
+          <div class="pb-title">牌局已暂停</div>
+          <div class="pb-sub" id="pb-sub">等待继续</div>
+          <button id="btn-resume" class="btn primary">继续牌局</button>
+        </div>
+      </div>
+
+      <div id="fx-layer" class="fx-layer"></div>
+      <canvas id="fx-canvas" class="fx-canvas"></canvas>
     </div>
-    <div id="fx-layer" class="fx-layer"></div>
-    <canvas id="fx-canvas" class="fx-canvas"></canvas>
   </section>
+
+  <div id="rotover" class="rotover">
+    <div class="rot-ico">⟳</div>
+    <div class="rot-txt">请把手机横过来</div>
+  </div>
 
   <!-- ========== 结算 ========== -->
   <div id="result" class="overlay">

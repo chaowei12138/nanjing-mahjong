@@ -60,6 +60,7 @@
       serverSeed: serverSeed, salts: salts, seedHex: seedHex,
       commit: commit, wallHash: wallHash, initialWall: wall.slice(),
       over: false, result: null, log: [], drawnTile: null,
+      drawnSeat: -1, drawSeq: 0, discardSeq: 0,
       gangKai: 0, drawCount: 0, actionCount: 0, huCount: 0,
       startedAt: Date.now()
     };
@@ -79,6 +80,8 @@
     }
     if (got === null) return null;
     state.drawnTile = got;
+    state.drawnSeat = p;
+    state.drawSeq++;        // 每次真正摸到牌（含补花后）自增，前端据此只播一次动效
     state.drawCount++;
     return got;
   }
@@ -121,6 +124,8 @@
     state.lastDiscard = card;
     state.lastPlayer = p;
     state.drawnTile = null;
+    state.drawnSeat = -1;
+    state.discardSeq++;
     state.gangKai = 0;
     state.actionCount++;
     pushLog(state, pl.name + ' 打出 ' + NJ.cardName(card));
@@ -194,7 +199,7 @@
       pl.melds.push({ type: 'peng', card: card, from: state.lastPlayer });
       state.lastDiscard = null; state.lastPlayer = -1;
       state.claimQueue = []; state.claimIdx = 0;
-      state.phase = 'discard'; state.turn = p; state.drawnTile = null; state.gangKai = 0;
+      state.phase = 'discard'; state.turn = p; state.drawnTile = null; state.drawnSeat = -1; state.gangKai = 0;
       state.actionCount++;
       pushLog(state, pl.name + ' 碰 ' + NJ.cardName(card));
       return { ok: true };
@@ -320,7 +325,9 @@
       wallCount: state.wall.length, round: state.round,
       over: state.over, result: state.result && sanitizeResult(state.result),
       lastDiscard: state.lastDiscard, lastPlayer: state.lastPlayer,
-      drawn: state.drawnTile, gangKai: state.gangKai,
+      drawn: state.drawnSeat === seat ? state.drawnTile : null,
+      drawnSeq: state.drawnSeat === seat ? state.drawSeq : 0,
+      drawnSeat: state.drawnSeat, discardSeq: state.discardSeq, gangKai: state.gangKai,
       actions: myActs,
       hand: me.hand, flowers: me.flowers, melds: me.melds,
       players: state.players.map(function (pl, i) {

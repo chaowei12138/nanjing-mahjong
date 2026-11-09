@@ -1,10 +1,20 @@
 /* 南京麻将 · 声音（Web Audio 实时合成，无外部音频文件） */
 (function (root) {
   'use strict';
-  var ctx = null, master = null, musicBus = null, sfxBus = null;
+  var ctx = null, master = null, musicBus = null, sfxBus = null, voiceBus = null;
   var started = false, timer = null, nextTime = 0, step = 0, melodyIdx = 4;
   var enabled = true;
   try { enabled = localStorage.getItem('nj_sound') !== '0'; } catch (e) {}
+
+  /* 报牌语音（edge-tts 晓晓，女声，本地 mp3，解码后走 Web Audio） */
+  var voiceOn = true;
+  try { voiceOn = localStorage.getItem('nj_voice') !== '0'; } catch (e) {}
+  var vbuf = {}, vloading = {}, vfetching = false;
+  var VOICE_KEYS = ['w1','w2','w3','w4','w5','w6','w7','w8','w9',
+    't1','t2','t3','t4','t5','t6','t7','t8','t9',
+    'b1','b2','b3','b4','b5','b6','b7','b8','b9',
+    'f1','f2','f3','f4','h1','h2','h3','timeout'];
+  var VOICE_DIR = 'voice/';
 
   var PENTA = [293.66, 329.63, 369.99, 440.00, 493.88, 587.33, 659.25, 739.99];
   var BASS = [73.42, 73.42, 110.00, 98.00];
@@ -18,6 +28,7 @@
     master = ctx.createGain(); master.gain.value = 1; master.connect(ctx.destination);
     musicBus = ctx.createGain(); musicBus.gain.value = enabled ? 0.5 : 0; musicBus.connect(master);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
+    voiceBus = ctx.createGain(); voiceBus.gain.value = 1; voiceBus.connect(master);
     return ctx;
   }
 
@@ -163,17 +174,100 @@
     }
   }
 
+  /* ---------- 报牌女声（mp3 解码后走 Web Audio，iOS 也能稳定播放） ---------- */
+  function loadOne(key) {
+    if (vbuf[key] || vloading[key] || !ctx) return;
+    vloading[key] = true;
+    fetch(VOICE_DIR + key + '.mp3')
+      .then(function (r) { if (!r.ok) throw new Error('voice 404'); return r.arrayBuffer(); })
+      .then(function (b) { return ctx.decodeAudioData(b); })
+      .then(function (buf) { vbuf[key] = buf; })
+      .catch(function () {})
+      .then(function () { vloading[key] = false; });
+  }
+
+  function preloadVoices() {
+    if (vfetching || !ctx) return;
+    vfetching = true;
+    var i = 0;
+    (function next() {
+      if (i >= VOICE_KEYS.length) return;
+      loadOne(VOICE_KEYS[i++]);
+      setTimeout(next, 30);
+    })();
+  }
+
+  var curVoice = null;
+  function playBuffer(buf) {
+    if (curVoice) { try { curVoice.stop(); } catch (e) {} }
+    var s = ctx.createBufferSource(), g = ctx.createGain();
+    s.buffer = buf; g.gain.value = 1;
+    s.connect(g); g.connect(voiceBus);
+    s.start(0);
+    curVoice = s;
+    s.onended = function () { if (curVoice === s) curVoice = null; };
+  }
+
+  function duck() {
+    if (!musicBus || !enabled) return;
+    var t = ctx.currentTime;
+    musicBus.gain.cancelScheduledValues(t);
+    musicBus.gain.setValueAtTime(musicBus.gain.value, t);
+    musicBus.gain.linearRampToValueAtTime(0.14, t + 0.08);
+    musicBus.gain.setTargetAtTime(0.5, t + 0.7, 0.35);
+  }
+
+  // 极端浏览器兜底：系统中文语音合成
+  function sysSay(text) {
+    try {
+      var S = root.speechSynthesis, U = root.SpeechSynthesisUtterance;
+      if (!S || !U) return;
+      var u = new U(text);
+      u.lang = 'zh-CN'; u.rate = 1.05; u.pitch = 1.15; u.volume = 1;
+      var vs = S.getVoices() || [];
+      for (var i = 0; i < vs.length; i++) {
+        if (/zh|Chinese/i.test(vs[i].lang + ' ' + vs[i].name)) { u.voice = vs[i]; break; }
+      }
+      S.cancel(); S.speak(u);
+    } catch (e) {}
+  }
+
+  function say(key, text) {
+    if (!voiceOn) return false;
+    if (!init()) { sysSay(text || ''); return false; }
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    var buf = vbuf[key];
+    if (buf) { playBuffer(buf); duck(); return true; }
+    loadOne(key);
+    setTimeout(function () {
+      if (vbuf[key]) { playBuffer(vbuf[key]); duck(); }
+      else if (text) sysSay(text);
+    }, 200);
+    return true;
+  }
+
   root.NJAudio = {
     init: init,
     start: startMusic,
     stop: stopMusic,
     sfx: sfx,
+    say: say,
+    preload: preloadVoices,
     isOn: function () { return enabled; },
+    isVoiceOn: function () { return voiceOn; },
+    voiceCount: function () { return Object.keys(vbuf).length; },
     toggle: function () { setEnabled(!enabled); return enabled; },
+    toggleVoice: function () {
+      voiceOn = !voiceOn;
+      try { localStorage.setItem('nj_voice', voiceOn ? '1' : '0'); } catch (e) {}
+      if (voiceOn) { preloadVoices(); say('f1', '东风'); }
+      return voiceOn;
+    },
     unlock: function () {
       if (!init()) return;
       if (ctx.state === 'suspended') ctx.resume();
       if (enabled) startMusic();
+      preloadVoices();
     }
   };
 })(typeof self !== 'undefined' ? self : this);

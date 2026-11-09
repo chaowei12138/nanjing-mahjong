@@ -5,15 +5,19 @@ const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const G = require('./public/game.js');
+const NJ = require('./public/core.js');
 const RNG = require('./public/rng.js');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
+const TURN_MS = Math.max(10, parseInt(process.env.TURN_SEC || '120', 10)) * 1000;  // 出牌限时：默认 2 分钟
+const CLAIM_MS = Math.max(5, parseInt(process.env.CLAIM_SEC || '15', 10)) * 1000;  // 碰/杠/胡 响应限时
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'
+  '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+  '.mp3': 'audio/mpeg'
 };
 
 const server = http.createServer((req, res) => {
@@ -22,9 +26,10 @@ const server = http.createServer((req, res) => {
   const file = path.join(PUBLIC, path.normalize(urlPath).replace(/^(\.\.[\/\\])+/, ''));
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not Found'); return; }
+    const isVoice = urlPath.startsWith('/voice/');
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache'
+      'Cache-Control': isVoice ? 'public, max-age=604800' : 'no-cache'
     });
     res.end(data);
   });
@@ -47,7 +52,8 @@ function newRoom(points) {
   return {
     code: genCode(), seats: [null, null, null, null],
     hostId: null, game: null, scores: [p, p, p, p], points: p,
-    round: 0, dealer: 0, timer: null, started: false
+    round: 0, dealer: 0, timer: null, started: false,
+    deadline: 0, clockLimit: 0, clockRemain: 0, paused: false, pausedBy: -1
   };
 }
 
@@ -69,15 +75,69 @@ function broadcastRoom(room) {
   room.seats.forEach(s => { if (s && s.ws) send(s.ws, info); });
 }
 
+function clockOf(room) {
+  if (!room.game || room.game.over) return null;
+  const remain = room.paused
+    ? Math.max(0, room.clockRemain || 0)
+    : Math.max(0, (room.deadline || 0) - Date.now());
+  return {
+    limit: room.clockLimit || 0,
+    remain: remain,
+    paused: !!room.paused,
+    by: room.pausedBy == null ? -1 : room.pausedBy,
+    now: Date.now()
+  };
+}
+
 function broadcastState(room) {
   const g = room.game;
   if (!g) return;
+  const clock = clockOf(room);
   room.seats.forEach((s, i) => {
-    if (s && s.ws && !s.isBot) send(s.ws, { t: 'state', view: G.viewFor(g, i) });
+    if (s && s.ws && !s.isBot) {
+      const view = G.viewFor(g, i);
+      view.clock = clock;
+      view.paused = !!room.paused;
+      view.pausedBy = room.pausedBy;
+      send(s.ws, { t: 'state', view: view });
+    }
   });
 }
 
+function broadcastNotice(room, obj) {
+  room.seats.forEach(s => { if (s && s.ws) send(s.ws, obj); });
+}
+
 function clearTimer(room) { if (room.timer) { clearTimeout(room.timer); room.timer = null; } }
+
+// 计时器：到点强制出牌 / 自动过牌
+function armTimer(room, seat) {
+  clearTimer(room);
+  const g = room.game;
+  if (!g || g.over || room.paused) return;
+  const limit = g.phase === 'claim' ? CLAIM_MS : TURN_MS;
+  room.clockLimit = limit;
+  room.deadline = Date.now() + limit;
+  room.timer = setTimeout(() => {
+    if (room.game !== g || g.over || room.paused) return;
+    if (G.waitingSeat(g) !== seat) return;
+    try {
+      if (g.phase === 'claim') {
+        G.respond(g, seat, 'pass');
+      } else {
+        const pl = g.players[seat];
+        const hand = pl.hand;
+        let pick = (g.drawnTile && hand.indexOf(g.drawnTile) >= 0)
+          ? g.drawnTile
+          : NJ.aiChooseDiscard(pl);
+        if (hand.indexOf(pick) < 0) pick = hand[hand.length - 1];
+        G.discard(g, seat, pick);
+        broadcastNotice(room, { t: 'notice', kind: 'timeout', seat: seat, card: pick });
+      }
+    } catch (e) { console.error(e); }
+    advance(room);
+  }, limit);
+}
 
 function advance(room) {
   clearTimer(room);
@@ -87,6 +147,7 @@ function advance(room) {
   if (g.over) {
     broadcastState(room);
     room.started = false;
+    room.paused = false;
     room.scores = g.players.map(p => p.score);
     room.dealer = g.result && g.result.type !== 'draw' ? g.result.winner : g.dealer;
     broadcastRoom(room);
@@ -101,9 +162,8 @@ function advance(room) {
     if (!s) { // 空座，用机器人代打
       room.seats[seat] = { name: '机器人', isBot: true, ws: null, connected: true };
     }
-    const bot = room.seats[seat];
     setTimeout(() => {
-      if (room.game !== g || g.over) return;
+      if (room.game !== g || g.over || room.paused) return;
       const a = G.botAct(g);
       if (!a) return;
       try {
@@ -113,30 +173,40 @@ function advance(room) {
       } catch (e) { console.error(e); }
       advance(room);
     }, 420);
+    // 机器人回合不占用人类倒计时，但仍广播（保持牌桌进度）
+    room.clockLimit = 0; room.deadline = 0;
+    broadcastState(room);
     return;
   }
 
+  if (!room.paused) armTimer(room, seat);
+  else { room.clockLimit = g.phase === 'claim' ? CLAIM_MS : TURN_MS; }
   broadcastState(room);
-  room.timer = setTimeout(() => {
-    if (room.game !== g || g.over) return;
-    const waiting = G.waitingSeat(g);
-    if (waiting !== seat) return;
-    // 超时代打
-    try {
-      if (g.phase === 'claim') G.respond(g, seat, 'pass');
-      else {
-        const hand = g.players[seat].hand;
-        const pick = g.drawnTile && hand.includes(g.drawnTile) ? g.drawnTile : NJFallbackDiscard(hand);
-        G.discard(g, seat, pick);
-      }
-    } catch (e) { console.error(e); }
-    advance(room);
-  }, 20000);
 }
 
-function NJFallbackDiscard(hand) {
-  return hand[hand.length - 1];
+// 暂停 / 继续
+function setPaused(room, on, seat) {
+  if (!room.game || room.game.over) return;
+  if (!!room.paused === !!on) return;
+  if (on) {
+    room.clockRemain = Math.max(0, (room.deadline || 0) - Date.now());
+    room.paused = true;
+    room.pausedBy = seat;
+    clearTimer(room);
+    broadcastNotice(room, { t: 'notice', kind: 'pause', seat: seat });
+  } else {
+    room.paused = false;
+    const remain = Math.max(5000, room.clockRemain || 0);
+    room.deadline = Date.now() + remain;
+    const waiting = G.waitingSeat(room.game);
+    const s = waiting >= 0 ? room.seats[waiting] : null;
+    if (s && s.ws && !s.isBot) armTimer(room, waiting);
+    broadcastNotice(room, { t: 'notice', kind: 'resume', seat: seat });
+    if (!(s && s.ws && !s.isBot)) { advance(room); return; }
+  }
+  broadcastState(room);
 }
+
 
 /* ---------------- WebSocket ---------------- */
 let nextId = 1;
@@ -175,6 +245,18 @@ function handle(ws, msg) {
     case 'again': return doAgain(ws);
     case 'discard': return doDiscard(ws, msg);
     case 'act': return doAct(ws, msg);
+    case 'pause': {
+      const room = ws.room;
+      if (!room || !room.game || room.game.over) return;
+      setPaused(room, true, ws.seat);
+      return;
+    }
+    case 'resume': {
+      const room = ws.room;
+      if (!room || !room.game || room.game.over) return;
+      setPaused(room, false, ws.seat);
+      return;
+    }
     case 'name': {
       const room = ws.room;
       if (!room) return;
@@ -233,6 +315,8 @@ function doAgain(ws) {
 
 function startRound(room) {
   room.round++;
+  room.paused = false; room.pausedBy = -1;
+  room.clockLimit = 0; room.clockRemain = 0; room.deadline = 0;
   const names = room.seats.map((s, i) => (s && s.name) || ('机器人' + (i + 1)));
   const bots = room.seats.map(s => !s || s.isBot || !s.ws);
   room.game = G.createGame({
@@ -247,6 +331,7 @@ function startRound(room) {
 function doDiscard(ws, msg) {
   const room = ws.room;
   if (!room || !room.game) return;
+  if (room.paused) return;
   const r = G.discard(room.game, ws.seat, msg.card);
   if (r.err) return send(ws, { t: 'error', msg: r.err });
   advance(room);
@@ -255,6 +340,7 @@ function doDiscard(ws, msg) {
 function doAct(ws, msg) {
   const room = ws.room;
   if (!room || !room.game) return;
+  if (room.paused) return;
   const g = room.game;
   let r;
   if (g.phase === 'claim') r = G.respond(g, ws.seat, msg.act);

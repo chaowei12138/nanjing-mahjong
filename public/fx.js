@@ -1,7 +1,7 @@
 /* 南京麻将 · 牌桌特效（字幕砸击 / 冲击波 / 金粒 / 震屏） */
 (function (root) {
   'use strict';
-  var cvs, ctx, parts = [], raf = null, dpr = 1;
+  var cvs, ctx, parts = [], raf = null, dpr = 1, W = innerWidth, H = innerHeight;
 
   function init() {
     cvs = document.getElementById('fx-canvas');
@@ -13,11 +13,15 @@
 
   function resize() {
     if (!cvs) return;
+    var board = document.querySelector('#table .board');
+    W = board ? board.clientWidth : innerWidth;
+    H = board ? board.clientHeight : innerHeight;
+    if (!W || !H) { W = innerWidth; H = innerHeight; }
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    cvs.width = Math.floor(innerWidth * dpr);
-    cvs.height = Math.floor(innerHeight * dpr);
-    cvs.style.width = innerWidth + 'px';
-    cvs.style.height = innerHeight + 'px';
+    cvs.width = Math.floor(W * dpr);
+    cvs.height = Math.floor(H * dpr);
+    cvs.style.width = W + 'px';
+    cvs.style.height = H + 'px';
   }
 
   function add(p) { parts.push(p); }
@@ -41,7 +45,6 @@
   }
 
   function confetti(n) {
-    var W = innerWidth, H = innerHeight;
     var colors = ['#ffe6a8', '#f3c463', '#d99b33', '#fff8e2', '#ffb35c', '#ffd166', '#e8622c'];
     for (var i = 0; i < n; i++) {
       add({
@@ -65,13 +68,13 @@
     function tick(now) {
       var dt = Math.min((now - last) / 16.67, 2.2); last = now;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      ctx.clearRect(0, 0, W, H);
       for (var i = parts.length - 1; i >= 0; i--) {
         var p = parts[i];
         p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt;
         p.vx *= 0.995; p.rot += p.vr * dt;
         p.life -= p.decay * dt * 1.6;
-        if (p.life <= 0 || p.y > innerHeight + 40) { parts.splice(i, 1); continue; }
+        if (p.life <= 0 || p.y > H + 40) { parts.splice(i, 1); continue; }
         ctx.globalAlpha = Math.max(p.life, 0);
         ctx.fillStyle = p.color;
         if (p.shape === 'rect') {
@@ -84,7 +87,7 @@
       }
       ctx.globalAlpha = 1;
       if (parts.length) { raf = requestAnimationFrame(tick); }
-      else { raf = null; ctx.clearRect(0, 0, innerWidth, innerHeight); }
+      else { raf = null; ctx.clearRect(0, 0, W, H); }
     }
     raf = requestAnimationFrame(tick);
   }
@@ -124,10 +127,11 @@
     setTimeout(function () { wrap.remove(); }, 1500);
   }
 
-  function center() { return { x: innerWidth / 2, y: innerHeight * 0.42 }; }
+  function center() { return { x: W / 2, y: H * 0.42 }; }
 
   root.NJFx = {
     init: init,
+    resize: resize,
     peng: function (sub) {
       var c = center();
       charFx('碰', 'peng', sub);

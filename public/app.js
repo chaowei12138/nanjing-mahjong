@@ -2,19 +2,24 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-  var FLOWER = ['春', '夏', '秋', '冬', '梅', '兰', '竹', '菊'];
 
   var mode = 'solo';
   var soloGame = null;
   var soloScores = null, soloRound = 0, soloDealer = 0;
+  var soloPaused = false, soloClockKey = '', soloFired = false;
   var ws = null, mySeat = 0, myId = null, isHost = false;
   var currentView = null;
-  var selectedIdx = -1;
   var lastResult = null;
-  var autoAdvanced = false;
   var prevMelds = [0, 0, 0, 0], prevRound = -1;
-  var fxGuard = '';
+  var prevSigs = ['', '', '', ''];
+
+  /* 报牌 / 手牌 */
+  var saidRound = -1, lastSaidSeq = -1, lastDrawSeq = -1;
+  var selectedNode = null, selectedCard = null;
+
+  /* 计时器 */
+  var clock = { end: 0, limit: 0, remain: 0, paused: false, running: false };
+  var clockTimer = null;
 
   var startPoints = 1000;
   try {
@@ -29,6 +34,7 @@
   }
   function toast(msg) {
     var t = $('toast');
+    if (!t) return;
     t.textContent = msg;
     t.classList.add('show');
     clearTimeout(t._t);
@@ -42,6 +48,7 @@
   function makeTile(card, size) {
     var el = document.createElement('div');
     el.className = 'tile suit-' + card[0] + (size ? ' ' + size : '');
+    el.dataset.card = card;
     el.innerHTML = NJTiles.svg(card);
     return el;
   }
@@ -52,6 +59,38 @@
     return el;
   }
 
+  var landHinted = false;
+  function hintLandscape() {
+    if (landHinted) return;
+    landHinted = true;
+    if (document.body.classList.contains('rot')) {
+      var ov = $('rotover');
+      if (ov) {
+        ov.classList.add('show');
+        setTimeout(function () { ov.classList.remove('show'); }, 1700);
+      }
+    }
+  }
+
+  /* ---------- 横屏 ---------- */
+  function fitBoard() {
+    var w = window.innerWidth, h = window.innerHeight;
+    var rot = h > w * 1.06 && w <= 620;
+    var bw = rot ? h : w, bh = rot ? w : h;
+    document.body.classList.toggle('rot', rot);
+    document.body.classList.toggle('short', bh < 400);
+    var de = document.documentElement.style;
+    de.setProperty('--bw', bw + 'px');
+    de.setProperty('--bh', bh + 'px');
+    if (window.NJFx && NJFx.resize) NJFx.resize();
+    // 尺寸变了要重算牌河容量
+    clearTimeout(fitBoard._t);
+    fitBoard._t = setTimeout(function () {
+      var tb = $('table');
+      if (currentView && tb && tb.classList.contains('active')) render(currentView);
+    }, 120);
+  }
+
   /* ---------- 路由 ---------- */
   function boot() {
     if (window.NJFx) NJFx.init();
@@ -60,6 +99,11 @@
     });
     var saved = localStorage.getItem('nj_nick');
     if (saved) { $('nickname').value = saved; }
+
+    fitBoard();
+    window.addEventListener('resize', fitBoard);
+    window.addEventListener('orientationchange', function () { setTimeout(fitBoard, 120); });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', fitBoard);
 
     // 积分档位
     var chips = document.querySelectorAll('#points-chips .chip');
@@ -89,12 +133,36 @@
         toast(on ? '音乐已开启' : '音乐已关闭');
       };
     }
+
+    // 报牌开关
+    var vb = $('btn-voice');
+    if (vb) {
+      var syncVoice = function () {
+        var on = NJAudio.isVoiceOn();
+        vb.textContent = on ? '报牌' : '静音';
+        vb.classList.toggle('on', on);
+      };
+      syncVoice();
+      vb.onclick = function () {
+        var on = NJAudio.toggleVoice();
+        syncVoice();
+        toast(on ? '报牌女声已开启' : '报牌女声已关闭');
+      };
+    }
+
+    // 暂停 / 继续
+    $('btn-pause').onclick = function () { togglePause(); };
+    $('btn-resume').onclick = function () { togglePause(true); };
+
     // 首次交互解锁音频（浏览器自动播放策略）
     var unlock = function () {
       NJAudio.unlock();
       document.removeEventListener('pointerdown', unlock);
     };
     document.addEventListener('pointerdown', unlock);
+
+    // 手牌点击（事件委托，配合增量渲染）
+    $('p0-hand').addEventListener('click', onHandClick);
 
     $('btn-create').onclick = function () {
       localStorage.setItem('nj_nick', nick());
@@ -103,7 +171,7 @@
     };
     $('btn-join').onclick = joinRoom;
     $('join-code').onkeydown = function (e) { if (e.key === 'Enter') joinRoom(); };
-    $('btn-solo').onclick = startSolo;
+    $('btn-solo').onclick = function () { startSolo(); };
     $('btn-leave').onclick = leaveRoom;
     $('btn-copy').onclick = copyLink;
     $('btn-start').onclick = function () { if (ws) sendWhenOpen({ t: 'start' }); };
@@ -172,6 +240,7 @@
   function handle(m) {
     if (m.t === 'welcome') { myId = m.id; return; }
     if (m.t === 'error') { toast(m.msg); return; }
+    if (m.t === 'notice') { onNotice(m); return; }
     if (m.t === 'room') {
       mode = 'online';
       roomCode = m.code;
@@ -185,12 +254,26 @@
       mySeat = m.view.seat;
       currentView = m.view;
       show('table');
+      hintLandscape();
       if (!m.view.over) $('result').classList.remove('show');
       render(m.view);
       if (m.view.over && m.view.result) {
         presentResult(m.view.result, m.view);
       }
       return;
+    }
+  }
+
+  function onNotice(m) {
+    if (m.kind === 'timeout') {
+      var nm = NJ.cardName(m.card);
+      var who = (currentView && currentView.players[m.seat]) ? currentView.players[m.seat].name : '';
+      toast(who + ' 超时，自动打出 ' + nm);
+    } else if (m.kind === 'pause') {
+      var n2 = (currentView && currentView.players[m.seat]) ? currentView.players[m.seat].name : '玩家';
+      toast(n2 + ' 请求暂停');
+    } else if (m.kind === 'resume') {
+      toast('牌局继续');
     }
   }
 
@@ -231,13 +314,16 @@
     localStorage.setItem('nj_nick', nick());
     mode = 'solo';
     mySeat = 0;
+    soloPaused = false; soloClockKey = ''; soloFired = false;
     var n = nick();
     if (!keep || !soloScores) {
       soloScores = [startPoints, startPoints, startPoints, startPoints];
       soloRound = 0; soloDealer = 0;
     }
     soloRound++;
-    prevMelds = [0, 0, 0, 0]; prevRound = -1; resultKey = '';
+    prevMelds = [0, 0, 0, 0]; prevRound = -1; prevSigs = ['', '', '', ''];
+    lastDrawSeq = -1; lastSaidSeq = -1; saidRound = -1;
+    selectedNode = null; selectedCard = null;
     soloGame = NJGame.createGame({
       names: [n, '小南', '阿京', '老陵'],
       bots: [false, true, true, true],
@@ -247,6 +333,7 @@
     });
     currentView = NJGame.viewFor(soloGame, 0);
     show('table');
+    hintLandscape();
     render(currentView);
     soloStep();
   }
@@ -264,7 +351,9 @@
     }
     var seat = NJGame.waitingSeat(soloGame);
     if (seat === 0) return;
+    if (soloPaused) return;
     setTimeout(function () {
+      if (soloPaused || !soloGame) return;
       var a = NJGame.botAct(soloGame);
       if (!a) return;
       if (a.kind === 'discard') NJGame.discard(soloGame, a.seat, a.card);
@@ -280,8 +369,143 @@
     if (ws) sendWhenOpen({ t: 'again' });
   }
 
+  /* ---------- 暂停 ---------- */
+  function togglePause(forceResume) {
+    if (!currentView || currentView.over) return;
+    var wantPause = forceResume ? false : !clock.paused;
+    if (mode === 'solo') {
+      soloPaused = wantPause;
+      pausedNow = wantPause;
+      if (wantPause) {
+        clock.remain = Math.max(0, clockLeft());
+        clock.paused = true;
+        clock.running = false;
+      } else {
+        clock.end = Date.now() + Math.max(1000, clock.remain);
+        clock.paused = false;
+        clock.running = clock.limit > 0;
+        if (soloGame && !soloGame.over && NJGame.waitingSeat(soloGame) !== 0) soloStep();
+      }
+      paintClock();
+      renderPause();
+    } else if (ws) {
+      sendWhenOpen({ t: wantPause ? 'pause' : 'resume' });
+    }
+  }
+
+  var pausedNow = false, pausedBySeat = -1;
+
+  function renderPause() {
+    var box = $('pausebox');
+    if (!box) return;
+    var paused = !!pausedNow;
+    box.classList.toggle('show', paused);
+    var btn = $('btn-pause');
+    if (btn) {
+      btn.textContent = paused ? '继续' : '暂停';
+      btn.classList.toggle('paused', paused);
+    }
+    if (paused) {
+      var by = pausedBySeat;
+      var nm = (currentView && currentView.players && currentView.players[by]) ? currentView.players[by].name : '';
+      $('pb-sub').textContent = nm ? nm + ' 请求暂停' : '所有人可点「继续」恢复';
+    }
+  }
+
+  /* ---------- 计时器 ---------- */
+  function clockLeft() {
+    return clock.paused ? Math.max(0, clock.remain) : Math.max(0, clock.end - Date.now());
+  }
+
+  function setClock(remain, limit, paused) {
+    clock.limit = limit || 0;
+    clock.remain = Math.max(0, remain || 0);
+    clock.paused = !!paused;
+    clock.end = Date.now() + clock.remain;
+    clock.running = clock.limit > 0 && !clock.paused;
+    if (!clock.limit) {
+      $('turnclock').classList.remove('show', 'warn', 'danger');
+      return;
+    }
+    $('turnclock').classList.add('show');
+    paintClock();
+    if (!clockTimer) clockTimer = setInterval(paintClock, 200);
+  }
+
+  function paintClock() {
+    if (!clock.limit) return;
+    var left = clockLeft();
+    var pct = Math.max(0, Math.min(1, left / clock.limit));
+    $('tc-fill').style.width = (pct * 100) + '%';
+    var s = Math.ceil(left / 1000);
+    $('tc-txt').textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+    var box = $('turnclock');
+    box.classList.toggle('warn', left <= 40000 && left > 15000);
+    box.classList.toggle('danger', left <= 15000);
+    if (mode === 'solo' && !clock.paused && left <= 0 && !soloFired && soloGame && !soloGame.over) {
+      soloFired = true;
+      soloForce();
+    }
+  }
+
+  function soloForce() {
+    if (!soloGame || soloGame.over) return;
+    if (soloGame.phase === 'claim') {
+      NJGame.respond(soloGame, 0, 'pass');
+    } else if (soloGame.turn === 0) {
+      var hand = soloGame.players[0].hand;
+      var pick = (soloGame.drawnTile && hand.indexOf(soloGame.drawnTile) >= 0)
+        ? soloGame.drawnTile : NJ.aiChooseDiscard(soloGame.players[0]);
+      if (hand.indexOf(pick) < 0) pick = hand[hand.length - 1];
+      NJGame.discard(soloGame, 0, pick);
+      toast('超时自动打出 ' + NJ.cardName(pick));
+    }
+    soloStep();
+  }
+
+  function syncClockFromView(v) {
+    if (mode === 'solo') {
+      pausedNow = soloPaused;
+      pausedBySeat = -1;
+      renderPause();
+      return;
+    }
+    if (v.over) {
+      pausedNow = false;
+      clock.limit = 0; setClock(0, 0, false); renderPause();
+      return;
+    }
+    var c = v.clock;
+    pausedNow = v.paused != null ? !!v.paused : !!(c && c.paused);
+    pausedBySeat = (c && c.by != null) ? c.by : -1;
+    if (c && c.limit > 0) setClock(c.remain, c.limit, pausedNow);
+    else setClock(0, 0, false);
+    renderPause();
+  }
+
+  /* ---------- 报牌 ---------- */
+  function showSaid(text) {
+    var el = $('said');
+    if (!el) return;
+    el.textContent = text;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove('show'); }, 1300);
+  }
+
+  function announceDiscard(v) {
+    if (v.over || !v.lastDiscard || v.lastPlayer < 0) return;
+    if (v.discardSeq === lastSaidSeq) return;
+    lastSaidSeq = v.discardSeq;
+    var nm = NJ.cardName(v.lastDiscard);
+    NJAudio.say(v.lastDiscard, nm);
+    var who = v.players[v.lastPlayer] ? v.players[v.lastPlayer].name : '';
+    if (v.lastPlayer !== v.seat) showSaid(who + ' · ' + nm);
+  }
+
   /* ---------- 渲染牌桌 ---------- */
-  var prevSigs = ['', '', '', ''];
   function meldSig(melds) {
     return (melds || []).map(function (m) { return m.type + ':' + (m.card || ''); }).join('|');
   }
@@ -330,6 +554,7 @@
     var turnName = v.over ? '本局结束' :
       (v.turn === me ? '轮到你出牌' : v.players[v.turn].name + ' 出牌中');
     if (v.phase === 'claim' && !v.over) turnName = '等待响应';
+    if (clock.paused && !v.over) turnName = '已暂停';
     $('center-turn').textContent = turnName;
 
     var VIS = { top: 'p2', left: 'p1', right: 'p3' };
@@ -389,6 +614,25 @@
     renderFlowers($('p0-flowers'), v.flowers);
     renderHand(v);
     renderActions(v);
+
+    // 计时 / 暂停 / 报牌
+    syncClockFromView(v);
+    if (v.round !== saidRound) { saidRound = v.round; lastSaidSeq = -1; }
+    announceDiscard(v);
+
+    // 单人模式：轮到自己时挂表
+    if (mode === 'solo' && soloGame && !soloGame.over) {
+      var w = NJGame.waitingSeat(soloGame);
+      var key = soloGame.round + ':' + soloGame.phase + ':' + soloGame.actionCount + ':' + soloGame.drawSeq;
+      if (w !== 0) {
+        clock.limit = 0; setClock(0, 0, false);
+        soloClockKey = '';
+      } else if (key !== soloClockKey) {
+        soloClockKey = key; soloFired = false;
+        var lim = soloGame.phase === 'claim' ? 15000 : 120000;
+        setClock(lim, lim, soloPaused);
+      }
+    }
   }
 
   function renderSideBacks(el, count) {
@@ -402,12 +646,18 @@
     }
   }
 
-  function renderRiver(el, cards, lastCard) {    if (!el) return;
-    el.innerHTML = '';
+  function renderRiver(el, cards, lastCard) {
+    if (!el) return;
+    var w = el.clientWidth || 60, h = el.clientHeight || 48;
+    var cols = Math.max(1, Math.floor((w + 1) / 17));
+    var rows = Math.max(1, Math.floor((h + 1) / 24));
+    var cap = cols * rows;
+    var shown = cards.length > cap ? cards.slice(cards.length - cap) : cards;
     var lastIdx = -1;
-    if (lastCard) { for (var i = cards.length - 1; i >= 0; i--) if (cards[i] === lastCard) { lastIdx = i; break; } }
-    cards.forEach(function (c, i) {
-      var t = makeTile(c, 'xs');
+    if (lastCard) { for (var i = shown.length - 1; i >= 0; i--) if (shown[i] === lastCard) { lastIdx = i; break; } }
+    el.innerHTML = '';
+    shown.forEach(function (c, i) {
+      var t = makeTile(c, 'xxs');
       if (i === lastIdx) t.classList.add('last');
       el.appendChild(t);
     });
@@ -434,10 +684,10 @@
     (flowers || []).forEach(function (c) { el.appendChild(makeTile(c, 'xxxs')); });
   }
 
+  /* 手牌：增量复用 DOM，摸到的牌只出现一次，不重复闪动 */
   function renderHand(v) {
     var el = $('p0-hand');
-    el.innerHTML = '';
-    if (!v.hand) return;
+    if (!v.hand) { el.innerHTML = ''; return; }
     var drawn = v.drawn;
     var rest = v.hand.slice();
     if (drawn) {
@@ -447,38 +697,86 @@
     rest = NJ.sortHand(rest);
     var all = drawn ? rest.concat([drawn]) : rest;
 
+    var fresh = false;
+    if (drawn) {
+      if (v.drawnSeq !== lastDrawSeq) { lastDrawSeq = v.drawnSeq; fresh = true; }
+    } else lastDrawSeq = -1;
+
     var canAct = !v.over && v.phase === 'discard' && v.turn === v.seat;
 
-    all.forEach(function (c, idx) {
-      var t = makeTile(c);
-      if (drawn && idx === all.length - 1) t.classList.add('gap', 'drawn');
-      if (selectedIdx === idx) t.classList.add('sel');
-      if (v.ting && v.ting[c]) t.classList.add('ting');
-      if (canAct) {
-        t.addEventListener('click', function () {
-          NJAudio.sfx('tap');
-          if (selectedIdx === idx) { playTile(c); }
-          else { selectedIdx = idx; renderHand(v); }
-        });
+    // 复用同名牌的已有节点
+    var pool = Array.prototype.slice.call(el.children);
+    var used = new Array(pool.length);
+    var nodes = [];
+    for (var i = 0; i < all.length; i++) {
+      var c = all[i], hit = -1;
+      for (var j = 0; j < pool.length; j++) {
+        if (!used[j] && pool[j].dataset.card === c) { hit = j; break; }
       }
-      el.appendChild(t);
+      var t;
+      if (hit >= 0) { used[hit] = true; t = pool[hit]; }
+      else { t = makeTile(c); }
+      nodes.push(t);
+    }
+    // 按顺序摆好，多余的移除
+    for (var k = 0; k < nodes.length; k++) {
+      if (el.children[k] !== nodes[k]) el.insertBefore(nodes[k], el.children[k] || null);
+    }
+    for (var m = 0; m < pool.length; m++) {
+      if (!used[m] && pool[m].parentNode === el) el.removeChild(pool[m]);
+    }
+
+    var lastIdx = all.length - 1;
+    nodes.forEach(function (t, idx) {
+      var isDrawn = !!drawn && idx === lastIdx;
+      t.classList.toggle('gap', isDrawn);
+      t.classList.toggle('drawn', isDrawn);
+      t.classList.toggle('ting', !!(v.ting && v.ting[all[idx]]));
+      t.classList.toggle('sel', t === selectedNode);
+      t.style.cursor = canAct ? 'pointer' : 'default';
+      if (fresh && isDrawn) {
+        t.classList.remove('drop');
+        void t.offsetWidth;
+        t.classList.add('drop');
+      }
     });
+    if (selectedNode && selectedNode.parentNode !== el) { selectedNode = null; selectedCard = null; }
   }
 
+  function onHandClick(e) {
+    var v = currentView;
+    if (!v || v.over || v.phase !== 'discard' || v.turn !== v.seat) return;
+    var t = e.target.closest ? e.target.closest('.tile') : null;
+    if (!t || t.parentNode !== $('p0-hand')) return;
+    var card = t.dataset.card;
+    NJAudio.sfx('tap');
+    if (selectedNode === t) {
+      selectedNode = null; selectedCard = null;
+      t.classList.remove('sel');
+      playTile(card);
+      return;
+    }
+    var prev = document.querySelectorAll('#p0-hand .tile.sel');
+    for (var i = 0; i < prev.length; i++) prev[i].classList.remove('sel');
+    selectedNode = t; selectedCard = card;
+    t.classList.add('sel');
+  }
+
+  var actSig = '';
   function renderActions(v) {
     var bar = $('actions');
-    bar.innerHTML = '';
-    if (v.over) return;
-    var acts = v.actions || [];
-    if (!acts.length) return;
-
+    var acts = (!v.over && v.actions) ? v.actions.slice() : [];
     var order = ['hu', 'gang', 'peng', 'angang', 'bugang', 'pass'];
     acts.sort(function (a, b) { return order.indexOf(a.type) - order.indexOf(b.type); });
-
+    var sig = acts.map(function (a) { return a.type + ':' + (a.card || ''); }).join(',');
+    if (sig === actSig) return;
+    actSig = sig;
+    bar.innerHTML = '';
+    if (!acts.length) return;
     acts.forEach(function (a) {
       var b = document.createElement('button');
-      b.className = 'act-btn' + (a.type === 'hu' ? ' hu' : '') + (a.type === 'pass' ? ' pass' : '');
       var label = { hu: '胡', peng: '碰', gang: '杠', angang: '暗杠', bugang: '补杠', pass: '过' }[a.type] || a.type;
+      b.className = 'act-btn' + (a.type === 'hu' ? ' hu' : '') + (a.type === 'pass' ? ' pass' : '');
       b.textContent = label;
       b.onclick = function () { doAction(a); };
       bar.appendChild(b);
@@ -486,7 +784,7 @@
   }
 
   function doAction(a) {
-    selectedIdx = -1;
+    selectedNode = null; selectedCard = null;
     if (mode === 'solo') {
       var r;
       if (soloGame.phase === 'claim') r = NJGame.respond(soloGame, 0, a.type);
@@ -502,7 +800,7 @@
   }
 
   function playTile(card) {
-    selectedIdx = -1;
+    selectedNode = null; selectedCard = null;
     NJAudio.sfx('tap');
     if (mode === 'solo') {
       var r = NJGame.discard(soloGame, 0, card);
