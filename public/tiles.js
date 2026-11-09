@@ -41,22 +41,30 @@
   function tiao(n) {
     var s = '';
     if (n === 1) {
-      // 一条：翠鸟（侧身立于枝上）
-      return '<g transform="translate(31,40)">' +
-        '<path d="M-2,20 q-2,10 -8,14" stroke="' + GRN + '" stroke-width="2" fill="none" stroke-linecap="round"/>' +
-        '<path d="M6,20 q2,10 -2,15" stroke="' + GRN + '" stroke-width="2" fill="none" stroke-linecap="round"/>' +
-        '<path d="M-8,33 l-5,2 M-8,33 l1,5" stroke="' + GRN + '" stroke-width="1.6" stroke-linecap="round"/>' +
-        '<path d="M-4,35 l-4,3 M-4,35 l2,4" stroke="' + GRN + '" stroke-width="1.6" stroke-linecap="round"/>' +
-        '<path d="M-9,16 q-9,-2 -19,-12 q7,14 17,17z" fill="' + GRN + '"/>' +
-        '<path d="M-6,18 q-8,3 -16,0 q8,8 17,5z" fill="' + GRN2 + '" opacity=".9"/>' +
-        '<ellipse cx="0" cy="3" rx="13" ry="16" fill="' + GRN + '" transform="rotate(-9)"/>' +
-        '<path d="M-10,2 q8,-9 15,-2 q-6,10 -14,7z" fill="' + GRN2 + '"/>' +
-        '<path d="M-6,4 q6,-4 9,0" stroke="#0d5230" stroke-width="1" fill="none" opacity=".55"/>' +
-        '<circle cx="7" cy="-14" r="9" fill="' + GRN + '"/>' +
-        '<path d="M15,-16 L27,-12.5 L15,-9 Z" fill="' + RED + '"/>' +
-        '<circle cx="9" cy="-16.5" r="2.2" fill="#fff"/><circle cx="9.6" cy="-16.5" r="1" fill="#12351f"/>' +
-        '<path d="M3,-22 q2,-7 8,-8 q-4,4 -4,8z" fill="' + RED + '"/>' +
-        '<path d="M-13,4 q-6,4 -9,9" stroke="' + RED + '" stroke-width="1.6" fill="none" opacity=".75"/>' +
+      // 一条：翠鸟（侧立，三根细长尾羽，朱喙朱冠）
+      return '<g>' +
+        // 尾羽（三根细羽）
+        '<path d="M24,53 C17,57 10,59 4,59" stroke="' + GRN + '" stroke-width="3.6" stroke-linecap="round" fill="none"/>' +
+        '<path d="M24,56 C17,61 11,65 7,70" stroke="' + GRN2 + '" stroke-width="3.2" stroke-linecap="round" fill="none"/>' +
+        '<path d="M25,59 C22,64 20,69 19,74" stroke="' + GRN + '" stroke-width="2.8" stroke-linecap="round" fill="none"/>' +
+        // 腿爪
+        '<path d="M28,59 L27,69 M33,59 L34,69" stroke="#1f7a49" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M27,69 L22,72 M27,69 L28,74 M34,69 L39,72 M34,69 L33,74" stroke="#1f7a49" stroke-width="1.5" stroke-linecap="round"/>' +
+        // 身体
+        '<ellipse cx="30" cy="46" rx="10.6" ry="13.6" fill="' + GRN + '" transform="rotate(-6 30 46)"/>' +
+        // 胸腹亮面
+        '<path d="M33,34 C39,41 39,53 33,59 C36,51 36,42 33,34 Z" fill="' + GRN2 + '" opacity=".75"/>' +
+        // 翅膀
+        '<ellipse cx="26" cy="47" rx="6.2" ry="9.4" fill="' + GRN2 + '" transform="rotate(-8 26 47)"/>' +
+        '<path d="M24,42 C21,46 21,52 24,55 M27,41 C24,45 24,51 27,54" stroke="#0d5230" stroke-width="1" fill="none" opacity=".45"/>' +
+        // 头
+        '<circle cx="33.5" cy="27" r="7.6" fill="' + GRN + '"/>' +
+        // 冠羽
+        '<path d="M31,20 C31,15 35,12 40,13 C35,15 34,18 34,21 Z" fill="' + RED + '"/>' +
+        // 喙
+        '<path d="M40.5,25 L48,28.5 L40.5,32 Z" fill="' + RED + '"/>' +
+        // 眼
+        '<circle cx="36.5" cy="25.5" r="2.1" fill="#fff"/><circle cx="37.1" cy="25.5" r="1" fill="#12351f"/>' +
         '</g>';
     }
     var V = [
