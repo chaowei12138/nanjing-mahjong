@@ -368,12 +368,15 @@
       }
     }
     renderMelds($('p2-melds'), top.melds, false, 'xxs');
+    renderFlowers($('p2-flowers'), top.flowers);
 
     // 左右
     renderSideBacks($('p1-backs'), v.players[seats.left].handCount);
     renderSideBacks($('p3-backs'), v.players[seats.right].handCount);
     renderMelds($('p1-melds'), v.players[seats.left].melds, false, 'xxs');
     renderMelds($('p3-melds'), v.players[seats.right].melds, false, 'xxs');
+    renderFlowers($('p1-flowers'), v.players[seats.left].flowers);
+    renderFlowers($('p3-flowers'), v.players[seats.right].flowers);
 
     // 牌河
     renderRiver($('river0'), v.players[me].river, v.lastPlayer === me ? v.lastDiscard : null);
@@ -383,6 +386,7 @@
 
     // 自己
     renderMelds($('p0-melds'), v.melds, true, 'sm');
+    renderFlowers($('p0-flowers'), v.flowers);
     renderHand(v);
     renderActions(v);
   }
@@ -427,12 +431,7 @@
   function renderFlowers(el, flowers) {
     if (!el) return;
     el.innerHTML = '';
-    var n = (flowers || []).length;
-    if (!n) return;
-    var b = document.createElement('span');
-    b.className = 'flower-badge';
-    b.textContent = '花 ' + n;
-    el.appendChild(b);
+    (flowers || []).forEach(function (c) { el.appendChild(makeTile(c, 'xxxs')); });
   }
 
   function renderHand(v) {

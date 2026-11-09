@@ -5,6 +5,7 @@
   var FLOWER = ['春', '夏', '秋', '冬', '梅', '兰', '竹', '菊'];
   var INK = '#1a1a1a', RED = '#b02a20', RED2 = '#8f1f18';
   var GRN = '#17713e', GRN2 = '#2c9555', BLU = '#254e6b', GOLD = '#8f6b1f';
+  var DARK = '#2e3235';
   var cache = {};
 
   function text(x, y, size, color, str, weight) {
@@ -34,7 +35,7 @@
   }
 
   function wan(n) {
-    return text(30, 33, 33, INK, CN[n], 700) + text(30, 68, 34, RED, '萬', 700);
+    return text(30, 29, 30, INK, CN[n], 700) + text(30, 65, 32, RED, '萬', 700);
   }
 
   function tiao(n) {
@@ -71,42 +72,49 @@
     ][n];
     var h = [0, 0, 26, 24, 28, 26, 26, 20, 25, 20][n];
     V.forEach(function (p, i) {
-      var red = (n === 5 && i === 2) || (n === 7 && i === 0);
+      var red = (n === 3 && i === 0) || (n === 5 && i === 2) || (n === 7 && i === 0);
       s += stick(p[0], p[1], red ? h + 2 : h, red ? RED : GRN, red ? RED2 : '#0d5230');
     });
     return s;
   }
 
+  /* 筒：严格按参考牌面排布（位置 + 配色） */
   function tong(n) {
-    var color = (n === 8 || n === 9) ? BLU : (n === 1 ? GRN : GRN);
-    var s = '';
     if (n === 1) {
       return '<g fill="none" stroke="' + GRN + '">' +
-        '<circle cx="30" cy="42" r="23" stroke-width="4"/>' +
-        '<circle cx="30" cy="42" r="15" stroke-width="2.4"/>' +
+        '<circle cx="30" cy="42" r="22" stroke-width="4.2"/>' +
+        '<circle cx="30" cy="42" r="13.5" stroke-width="2.2"/>' +
         '</g>' +
-        '<circle cx="30" cy="42" r="8.5" fill="' + RED + '"/>' +
-        '<circle cx="30" cy="42" r="3" fill="#fff" opacity=".55"/>' +
-        '<g fill="' + GRN + '" opacity=".85">' +
-        '<circle cx="30" cy="13" r="2.2"/><circle cx="30" cy="71" r="2.2"/>' +
-        '<circle cx="1.5" cy="42" r="2.2"/><circle cx="58.5" cy="42" r="2.2"/>' +
+        '<circle cx="30" cy="42" r="8" fill="' + RED + '"/>' +
+        '<circle cx="27.4" cy="39.4" r="2.4" fill="#fff" opacity=".45"/>' +
+        '<g fill="' + GRN + '">' +
+        '<circle cx="30" cy="13" r="2.1"/><circle cx="30" cy="71" r="2.1"/>' +
+        '<circle cx="3" cy="42" r="2.1"/><circle cx="57" cy="42" r="2.1"/>' +
         '</g>';
     }
-    var V = [
-      [], [], [[30, 24], [30, 60]],
-      [[16, 18], [30, 42], [44, 66]],
-      [[19, 24], [41, 24], [19, 60], [41, 60]],
-      [[18, 20], [42, 20], [30, 42], [18, 64], [42, 64]],
-      [[20, 16], [40, 16], [20, 42], [40, 42], [20, 68], [40, 68]],
-      [[13, 15], [30, 21], [47, 27], [19, 52], [41, 52], [19, 71], [41, 71]],
-      [[10, 23], [24, 23], [38, 23], [52, 23], [10, 60], [24, 60], [38, 60], [52, 60]],
-      [[13, 16], [30, 16], [47, 16], [13, 42], [30, 42], [47, 42], [13, 68], [30, 68], [47, 68]]
-    ][n];
-    var r = [0, 0, 13, 12, 12, 11, 10.5, 9, 8, 9][n];
-    V.forEach(function (p, i) {
-      var center = (n === 5 && i === 2);
-      s += dot(p[0], p[1], center ? r + 1 : r, center ? RED : color, center ? RED : (n === 5 ? RED : color));
-    });
+    var L = {
+      // [x, y, r, color]
+      2: [[30, 25, 14, GRN], [30, 60, 14, GRN]],
+      3: [[17, 23, 12.5, GRN], [30, 42, 12.5, RED], [43, 61, 12.5, DARK]],
+      4: [[19, 25, 12, GRN], [41, 25, 12, DARK], [19, 60, 12, DARK], [41, 60, 12, GRN]],
+      5: [[17, 22, 11.5, GRN], [43, 22, 11.5, DARK], [30, 42, 11.5, RED],
+          [17, 62, 11.5, DARK], [43, 62, 11.5, GRN]],
+      6: [[20, 20, 10.4, GRN], [40, 20, 10.4, GRN],
+          [20, 42, 10.4, RED], [40, 42, 10.4, RED],
+          [20, 64, 10.4, RED], [40, 64, 10.4, RED]],
+      7: [[16, 16, 8.5, GRN], [30, 27, 8.5, GRN], [44, 38, 8.5, RED],
+          [20, 56, 7.9, GRN], [40, 56, 7.9, GRN], [20, 71, 7.9, GRN], [40, 71, 7.9, GRN]],
+      // 八筒：2 列 × 4 行，深色（参考图排布）
+      8: [[20, 14, 8.6, DARK], [40, 14, 8.6, DARK],
+          [20, 32, 8.6, DARK], [40, 32, 8.6, DARK],
+          [20, 50, 8.6, DARK], [40, 50, 8.6, DARK],
+          [20, 68, 8.6, DARK], [40, 68, 8.6, DARK]],
+      9: [[14, 17, 8.2, DARK], [30, 17, 8.2, DARK], [46, 17, 8.2, DARK],
+          [14, 42, 8.2, RED], [30, 42, 8.2, RED], [46, 42, 8.2, RED],
+          [14, 67, 8.2, GRN], [30, 67, 8.2, GRN], [46, 67, 8.2, GRN]]
+    }[n] || [];
+    var s = '';
+    L.forEach(function (d) { s += dot(d[0], d[1], d[2], d[3], d[3]); });
     return s;
   }
 
@@ -118,16 +126,15 @@
   }
 
   function hua(n) {
-    if (n === 1) return text(30, 43, 44, RED, '中', 700);
-    if (n === 2) return text(30, 43, 44, GRN, '發', 700);
+    if (n === 1) return text(30, 44, 46, RED, '中', 700);
+    if (n === 2) return text(30, 44, 46, GRN, '發', 700);
     if (n === 3) {
-      return '<rect x="17" y="20" width="26" height="44" rx="3" fill="none" stroke="' + BLU + '" stroke-width="4"/>' +
+      return '<rect x="16" y="19" width="28" height="46" rx="3" fill="none" stroke="' + BLU + '" stroke-width="4"/>' +
         '<rect x="22" y="25" width="16" height="34" rx="1.5" fill="none" stroke="' + BLU + '" stroke-width="1.4" opacity=".7"/>';
     }
+    // 花牌：牌面只放一个汉字
     var ch = FLOWER[n - 4];
-    return text(30, 36, 30, n <= 7 ? GRN : GOLD, ch, 700) +
-      '<rect x="24" y="56" width="12" height="12" rx="2" fill="none" stroke="' + RED + '" stroke-width="2" opacity=".75"/>' +
-      '<circle cx="30" cy="62" r="2" fill="' + RED + '" opacity=".75"/>';
+    return text(30, 44, 47, n <= 7 ? RED : GRN, ch, 700);
   }
 
   function face(card) {

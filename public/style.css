@@ -166,7 +166,8 @@ html, body {
 
 /* 顶部（对家） */
 .seat.top { top: calc(32px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: 70%; }
-.seat.top .avatar-row { margin-bottom: 6px; }
+.seat.top .avatar-row { margin-bottom: 6px; justify-content: center; }
+.seat.top .pscore { margin-left: 10px; }
 .backrow { display: flex; justify-content: center; gap: 1px; }
 .mini-back {
   width: 14px; height: 20px; border-radius: 2px;
@@ -216,12 +217,21 @@ html, body {
 .river.bottom { bottom: 7px; left: 7px; right: 7px; height: 80px; justify-content: center; overflow: hidden; }
 .river .tile.last { outline: 1.5px solid var(--gold); outline-offset: 1px; z-index: 2; }
 
-.flower-badge {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 10px; color: #c9b06d; letter-spacing: .04em;
-  background: rgba(227,182,100,.1); border: 1px solid rgba(227,182,100,.18);
-  padding: 1px 7px; border-radius: 20px; line-height: 1.6;
+/* 花牌：贴在每家牌桌侧边 */
+.flowerstrip { position: absolute; display: flex; gap: 2px; z-index: 14; pointer-events: none; }
+.flowerstrip .tile { margin: 0; }
+#p2-flowers {
+  top: calc(56px + env(safe-area-inset-top)); right: 5px;
+  flex-wrap: wrap; justify-content: flex-end; max-width: 84px;
 }
+#p1-flowers { left: 3px; top: 53%; flex-direction: column; }
+#p3-flowers { right: 3px; top: 53%; flex-direction: column; }
+/* 自己的花牌：副露上方靠右，随内容增高，不遮挡任何元素 */
+#p0-flowers {
+  position: static; display: flex; justify-content: flex-end; align-items: center;
+  gap: 2px; padding-right: 4px; margin-bottom: 2px;
+}
+#p0-flowers:empty { display: none; }
 
 /* 自己 */
 .seat.me { left: 0; right: 0; bottom: 0; padding: 0 6px calc(6px + env(safe-area-inset-bottom)); }
@@ -229,14 +239,13 @@ html, body {
 .meldrow .meld { display: flex; }
 .meldrow .meld .tile { margin-left: -4px; }
 .meldrow .meld .tile:first-child { margin-left: 0; }
-.flowerrow { display: flex; gap: 3px; justify-content: center; margin-bottom: 4px; min-height: 0; }
 
 .handrow {
   display: flex; justify-content: center; align-items: flex-end;
-  min-height: calc(clamp(24px, calc((100vw - 12px) / 13.3), 29px) * 1.55 + 10px); padding: 8px 0 3px;
+  min-height: calc(clamp(23px, calc((100vw - 12px) / 13.9), 29px) * 1.55 + 10px); padding: 8px 0 3px;
 }
 .handrow .tile {
-  --tw: clamp(24px, calc((100vw - 12px) / 13.3), 29px);
+  --tw: clamp(23px, calc((100vw - 12px) / 13.9), 28.5px);
   --th: calc(var(--tw) * 1.55);
   margin-left: calc(var(--tw) * -0.06);
   cursor: pointer;
@@ -248,7 +257,7 @@ html, body {
 }
 .handrow .tile:first-child { margin-left: 0; }
 .handrow .tile.sel { transform: translateY(-14px); }
-.handrow .tile.gap { margin-left: 6px; }
+.handrow .tile.gap { margin-left: 5px; }
 .handrow .tile.drawn { box-shadow: 0 2px 0 #c9bfa4, 0 4px 10px rgba(0,0,0,.45), 0 0 0 1.5px var(--gold), inset 0 1px 0 #fff; }
 .handrow .tile.ting::after {
   content: ''; position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px;
@@ -293,6 +302,7 @@ html, body {
 .tile.sm { --tw: 22px; --th: 31px; }
 .tile.xs { --tw: 21px; --th: 30px; }
 .tile.xxs { --tw: 16px; --th: 23px; }
+.tile.xxxs { --tw: 13px; --th: 19px; }
 .tile.back {
   background: linear-gradient(150deg, #2a7a5c, #155239);
   box-shadow: 0 2px 0 #0d3b2a, 0 2px 4px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.22);
@@ -359,9 +369,6 @@ html, body {
   .seat.top { top: calc(28px + env(safe-area-inset-top)); }
   .center { inset: 84px 72px 158px 72px; }
 }
-
-/* 对家花牌靠右，弱化存在感 */
-#p2-flowers { justify-content: flex-end; padding-right: 2px; opacity: .9; }
 
 /* 桌面水印 */
 .center::before {
