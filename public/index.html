@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0b2e24">
+<title>南京麻将 · 好友局</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ========== 大厅 ========== -->
+  <section id="lobby" class="screen active">
+    <div class="lobby-inner">
+      <div class="brand">
+        <div class="brand-tiles">
+          <span class="mini-tile red">發</span>
+          <span class="mini-tile green">中</span>
+          <span class="mini-tile blue">萬</span>
+        </div>
+        <h1>南京麻将</h1>
+        <p class="sub">144 张 · 可碰可杠 · 花牌计番</p>
+      </div>
+
+      <label class="field">
+        <span>你的昵称</span>
+        <input id="nickname" maxlength="8" placeholder="给自己起个名" autocomplete="off">
+      </label>
+
+      <div class="lobby-actions">
+        <button id="btn-create" class="btn primary">
+          <b>创建房间</b><small>生成链接，发给微信好友</small>
+        </button>
+        <div class="join-row">
+          <input id="join-code" maxlength="4" placeholder="房间码" autocomplete="off">
+          <button id="btn-join" class="btn">加入</button>
+        </div>
+        <button id="btn-solo" class="btn ghost">单人练习（对战 3 个 AI）</button>
+      </div>
+
+      <div class="fair-note">
+        <span class="dot"></span>
+        每局公布随机承诺，结束后可验算，发牌不可暗改
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 房间等待 ========== -->
+  <section id="room" class="screen">
+    <div class="room-inner">
+      <button class="back" id="btn-leave">‹ 退出</button>
+      <h2>房间 <span id="room-code" class="code">----</span></h2>
+      <div id="seat-list" class="seat-list"></div>
+      <div class="room-actions">
+        <button id="btn-copy" class="btn primary">复制邀请链接</button>
+        <button id="btn-start" class="btn">开始游戏</button>
+      </div>
+      <p class="hint">把链接发到微信群，好友点开即可入座。不足 4 人由 AI 补位。</p>
+    </div>
+  </section>
+
+  <!-- ========== 牌桌 ========== -->
+  <section id="table" class="screen">
+    <div class="board">
+      <div class="topbar">
+        <span id="round-info">东 1 局</span>
+        <span id="wall-info">余 0</span>
+        <button id="btn-fair" class="fair-btn">公平性</button>
+      </div>
+
+      <div class="seat top" id="p2">
+        <div class="avatar-row"><span class="avatar">对</span><span class="pname">对家</span><span class="pscore">0</span></div>
+        <div class="backrow" id="p2-back"></div>
+        <div class="meldrow" id="p2-melds"></div>
+        <div class="flowerrow" id="p2-flowers"></div>
+      </div>
+
+      <div class="seat left" id="p1">
+        <div class="avatar-row"><span class="avatar">上</span><span class="pname">上家</span><span class="pscore">0</span></div>
+        <div class="side-backs" id="p1-backs"></div>
+        <div class="meldcol" id="p1-melds"></div>
+      </div>
+
+      <div class="seat right" id="p3">
+        <div class="avatar-row"><span class="avatar">下</span><span class="pname">下家</span><span class="pscore">0</span></div>
+        <div class="side-backs" id="p3-backs"></div>
+        <div class="meldcol" id="p3-melds"></div>
+      </div>
+
+      <div class="center">
+        <div class="river top" id="river2"></div>
+        <div class="river left" id="river1"></div>
+        <div class="river right" id="river3"></div>
+        <div class="river bottom" id="river0"></div>
+        <div class="center-panel">
+          <div id="center-turn">等待</div>
+          <div id="center-wall">144</div>
+        </div>
+        <div id="toast" class="toast"></div>
+      </div>
+
+      <div class="seat me" id="p0">
+        <div class="meldrow" id="p0-melds"></div>
+        <div class="flowerrow" id="p0-flowers"></div>
+        <div class="handrow" id="p0-hand"></div>
+        <div class="actionbar" id="actions"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== 结算 ========== -->
+  <div id="result" class="overlay">
+    <div class="modal">
+      <h3 id="result-title">本局结束</h3>
+      <div id="result-body" class="result-body"></div>
+      <div class="modal-actions">
+        <button id="btn-verify" class="btn small">验证发牌</button>
+        <button id="btn-again" class="btn primary">再来一局</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 验证 ========== -->
+  <div id="verify" class="overlay">
+    <div class="modal">
+      <h3>发牌公平性验证</h3>
+      <div class="verify-body">
+        <p class="vdesc">本局开始时已公布 <b>承诺哈希</b>（commit），结束时公布 <b>种子</b>。用种子重算洗牌，若得到相同牌墙哈希，即证明发牌未被篡改。</p>
+        <div class="kv"><label>开局承诺 commit</label><code id="v-commit"></code></div>
+        <div class="kv"><label>服务端种子</label><code id="v-seed"></code></div>
+        <div class="kv"><label>四家盐值</label><code id="v-salts"></code></div>
+        <div class="kv"><label>公布牌墙哈希</label><code id="v-wall"></code></div>
+        <div class="kv"><label>本地重算哈希</label><code id="v-calc"></code></div>
+        <div id="v-status" class="vstatus"></div>
+        <details class="how">
+          <summary>为什么这样算“真随机”？</summary>
+          <ul>
+            <li>随机源是浏览器的 <code>crypto.getRandomValues</code> / Node 的 <code>crypto.randomBytes</code>，密码学强度，不可预测。</li>
+            <li>洗牌用 Fisher–Yates，每个位置用<b>拒绝采样</b>取整数，消除取模偏差。</li>
+            <li>最终种子 = SHA-256(服务端种子 + 四家盐值 + 局号)，任何一方无法单独操纵牌序。</li>
+            <li>开局先公示 commit，事后无法改种子；重算对不上即为作弊。</li>
+          </ul>
+        </details>
+      </div>
+      <div class="modal-actions"><button id="btn-vclose" class="btn">关闭</button></div>
+    </div>
+  </div>
+
+</div>
+<script src="core.js"></script>
+<script src="rng.js"></script>
+<script src="game.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
