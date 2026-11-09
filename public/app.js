@@ -76,9 +76,12 @@
   function fitBoard() {
     var w = window.innerWidth, h = window.innerHeight;
     var rot = h > w * 1.06 && w <= 620;
-    var bw = rot ? h : w, bh = rot ? w : h;
+    var bw = Math.min(rot ? h : w, 1180);
+    var bh = Math.min(rot ? w : h, 760);
     document.body.classList.toggle('rot', rot);
     document.body.classList.toggle('short', bh < 400);
+    // 大屏时把牌桌限宽并居中，别把牌摊成一条
+    document.body.classList.toggle('center-board', !rot && (bw < w - 0.5 || bh < h - 0.5));
     var de = document.documentElement.style;
     de.setProperty('--bw', bw + 'px');
     de.setProperty('--bh', bh + 'px');

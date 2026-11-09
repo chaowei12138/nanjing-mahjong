@@ -142,6 +142,12 @@ html, body {
 }
 /* 竖屏手机：整体旋转 90°，用户把手机横过来即正 */
 body.rot .board { transform: translateX(var(--bh)) rotate(90deg); }
+/* 大屏：牌桌限宽居中 */
+body.center-board .board {
+  left: 50%; top: 50%;
+  margin-left: calc(var(--bw) / -2);
+  margin-top: calc(var(--bh) / -2);
+}
 
 .topbar {
   position: absolute; top: 0; left: 0; right: 0; height: 28px;
