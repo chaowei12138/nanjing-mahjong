@@ -32,7 +32,7 @@
     if (s === 'w') return CN[n] + '万';
     if (s === 't') return CN[n] + '条';
     if (s === 'b') return CN[n] + '筒';
-    if (s === 'f') return ['东', '南', '西', '北'][n - 1];
+    if (s === 'f') return ['东', '南', '西', '北'][n - 1] + '风';
     if (s === 'h') return n <= 3 ? ['中', '发', '白'][n - 1] : FLOWER_CN[n - 4];
     return c;
   }

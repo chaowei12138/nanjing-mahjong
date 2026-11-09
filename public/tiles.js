@@ -67,6 +67,16 @@
         '<circle cx="36.5" cy="25.5" r="2.1" fill="#fff"/><circle cx="37.1" cy="25.5" r="1" fill="#12351f"/>' +
         '</g>';
     }
+    if (n === 8) {
+      // 八条：按参考牌面，两条粗竹带折成 M / W（左竖—上斜—下斜—右竖）
+      var bar = function (d) {
+        return '<path d="' + d + '" fill="none" stroke="#0d5433" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '<path d="' + d + '" fill="none" stroke="' + GRN2 + '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '<path d="' + d + '" fill="none" stroke="#eef6ea" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" opacity=".62"/>';
+      };
+      return bar('M14,10 L14,34 L30,18 L46,34 L46,10') +
+        bar('M14,74 L14,50 L30,66 L46,50 L46,74');
+    }
     var V = [
       [], [],
       [[30, 25], [30, 59]],

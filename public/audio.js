@@ -15,6 +15,7 @@
     'b1','b2','b3','b4','b5','b6','b7','b8','b9',
     'f1','f2','f3','f4','h1','h2','h3','timeout'];
   var VOICE_DIR = 'voice/';
+  var VOICE_VER = '3';   // 语音包版本，改内容时递增，避免浏览器用旧缓存
 
   var PENTA = [293.66, 329.63, 369.99, 440.00, 493.88, 587.33, 659.25, 739.99];
   var BASS = [73.42, 73.42, 110.00, 98.00];
@@ -178,7 +179,7 @@
   function loadOne(key) {
     if (vbuf[key] || vloading[key] || !ctx) return;
     vloading[key] = true;
-    fetch(VOICE_DIR + key + '.mp3')
+    fetch(VOICE_DIR + key + '.mp3?v=' + VOICE_VER)
       .then(function (r) { if (!r.ok) throw new Error('voice 404'); return r.arrayBuffer(); })
       .then(function (b) { return ctx.decodeAudioData(b); })
       .then(function (buf) { vbuf[key] = buf; })
@@ -223,7 +224,7 @@
       var S = root.speechSynthesis, U = root.SpeechSynthesisUtterance;
       if (!S || !U) return;
       var u = new U(text);
-      u.lang = 'zh-CN'; u.rate = 1.05; u.pitch = 1.15; u.volume = 1;
+      u.lang = 'zh-CN'; u.rate = 0.95; u.pitch = 1.12; u.volume = 1;
       var vs = S.getVoices() || [];
       for (var i = 0; i < vs.length; i++) {
         if (/zh|Chinese/i.test(vs[i].lang + ' ' + vs[i].name)) { u.voice = vs[i]; break; }
