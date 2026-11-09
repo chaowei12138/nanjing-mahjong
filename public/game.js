@@ -322,7 +322,10 @@
     }
     return {
       seat: seat, turn: state.turn, phase: state.phase, dealer: state.dealer,
-      wallCount: state.wall.length, round: state.round,
+      wallCount: state.wall.length,
+      // 牌墙里还没被翻出的花牌数（含中发白与春夏秋冬梅兰竹菊，共 20 张）
+      wallFlowers: state.wall.reduce(function (n, c) { return n + (NJ.isFlower(c) ? 1 : 0); }, 0),
+      round: state.round,
       over: state.over, result: state.result && sanitizeResult(state.result),
       lastDiscard: state.lastDiscard, lastPlayer: state.lastPlayer,
       drawn: state.drawnSeat === seat ? state.drawnTile : null,

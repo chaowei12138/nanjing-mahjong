@@ -27,6 +27,15 @@
   /* 报牌 / 手牌 */
   var saidRound = -1, lastSaidSeq = -1, lastDrawSeq = -1;
   var selectedNode = null, selectedCard = null;
+  var selDiscardSeq = -1, selRound = -1;
+  var flowerSig = '';
+  /* 全部花牌（中发白 12 + 春夏秋冬梅兰竹菊 8），用于推算「未出的花牌」 */
+  var ALL_FLOWERS = NJ.buildWall().filter(NJ.isFlower);
+
+  function clearSelection() {
+    if (selectedNode) selectedNode.classList.remove('sel');
+    selectedNode = null; selectedCard = null;
+  }
 
   /* 计时器 */
   var clock = { end: 0, limit: 0, remain: 0, paused: false, running: false };
@@ -250,8 +259,9 @@
     };
     document.addEventListener('pointerdown', unlock);
 
-    // 手牌点击（事件委托，配合增量渲染）
+    // 手牌点击（事件委托，配合增量渲染）：只选中，真正打出要点「出牌」
     $('p0-hand').addEventListener('click', onHandClick);
+    $('btn-discard').onclick = onDiscardClick;
 
     $('btn-create').onclick = function () {
       localStorage.setItem('nj_nick', nick());
@@ -460,6 +470,7 @@
     prevMelds = [0, 0, 0, 0]; prevRound = -1; prevSigs = ['', '', '', ''];
     lastDrawSeq = -1; lastSaidSeq = -1; saidRound = -1;
     selectedNode = null; selectedCard = null;
+    selRound = -1; selDiscardSeq = -1; flowerSig = ''; actSig = '';
     soloGame = NJGame.createGame({
       names: [n, '小南', '阿京', '老陵'],
       bots: [false, true, true, true],
@@ -524,8 +535,10 @@
       }
       paintClock();
       renderPause();
+      updateDiscardBtn(currentView);
     } else if (ws) {
       sendWhenOpen({ t: wantPause ? 'pause' : 'resume' });
+      updateDiscardBtn(currentView);
     }
   }
 
@@ -684,8 +697,19 @@
     };
     $('round-info').textContent = '第 ' + v.round + ' 局 · ' +
       ['东', '南', '西', '北'][v.dealer] + '家坐庄';
-    $('wall-info').textContent = '余 ' + v.wallCount + ' 张';
+    var fw = (v.wallFlowers != null) ? v.wallFlowers
+      : Math.max(0, ALL_FLOWERS.length - seenFlowerCount(v));
+    $('wall-info').textContent = '余 ' + v.wallCount + ' 张 · 花 ' + fw;
     $('center-wall').textContent = v.wallCount;
+    $('center-flower').textContent = fw;
+    renderFlowerLeft(v);
+
+    // 新局 / 有人出牌后：清掉选中，避免残留高亮或误打
+    if (v.round !== selRound || v.discardSeq !== selDiscardSeq) {
+      selRound = v.round; selDiscardSeq = v.discardSeq;
+      clearSelection();
+    }
+    if (v.over || v.phase !== 'discard' || v.turn !== v.seat) clearSelection();
 
     var turnName = v.over ? '本局结束' :
       (v.turn === me ? '轮到你出牌' : v.players[v.turn].name + ' 出牌中');
@@ -750,6 +774,7 @@
     renderFlowers($('p0-flowers'), v.flowers);
     renderHand(v);
     renderActions(v);
+    updateDiscardBtn(v);
 
     // 计时 / 暂停 / 报牌
     syncClockFromView(v);
@@ -820,10 +845,59 @@
     (flowers || []).forEach(function (c) { el.appendChild(makeTile(c, 'xxxs')); });
   }
 
+  /* ---------- 局面信息：剩余花牌 / 出牌按钮 ---------- */
+  function seenFlowerCount(v) {
+    var n = 0;
+    (v.players || []).forEach(function (p) { n += (p.flowers || []).length; });
+    return n;
+  }
+
+  function renderFlowerLeft(v) {
+    var el = $('center-flower-left');
+    if (!el) return;
+    // 各家花牌区是公开信息；全集减去已亮出的，就是牌墙里还没翻出的花牌
+    var seen = {};
+    (v.players || []).forEach(function (p) {
+      (p.flowers || []).forEach(function (c) { seen[c] = (seen[c] || 0) + 1; });
+    });
+    var used = {}, left = [];
+    ALL_FLOWERS.forEach(function (c) {
+      used[c] = (used[c] || 0) + 1;
+      if (used[c] > (seen[c] || 0)) left.push(c);
+    });
+    var sig = v.round + ':' + left.join(',');
+    if (sig === flowerSig) return;
+    flowerSig = sig;
+    el.innerHTML = '';
+    left.forEach(function (c) { el.appendChild(makeTile(c, 'xxs')); });
+  }
+
+  function isPaused(v) {
+    if (mode === 'solo') return !!soloPaused;
+    return !!(v && (v.paused || (v.clock && v.clock.paused)));
+  }
+
+  function updateDiscardBtn(v) {
+    var bar = $('actions'), btn = $('btn-discard'), label = $('db-label'), sub = $('db-sub');
+    if (!bar || !btn || !label) return;
+    var canDiscard = !!(v && !v.over && v.phase === 'discard' && v.turn === v.seat && !isPaused(v));
+    var list = $('act-list');
+    var hasActs = !!(list && list.children.length);
+    bar.classList.toggle('show', canDiscard || hasActs);
+    btn.style.display = canDiscard ? '' : 'none';
+    var ready = canDiscard && !!selectedCard;
+    btn.classList.toggle('off', !ready);
+    btn.classList.toggle('ready', ready);
+    label.textContent = ready ? '打出 ' + NJ.cardName(selectedCard) : '出牌';
+    if (sub) sub.textContent = ready ? '点击打出' : '先选一张牌';
+    btn.title = ready ? ('打出 ' + NJ.cardName(selectedCard)) : '先点一张手牌，再点这里打出';
+  }
+
   /* 手牌：增量复用 DOM，摸到的牌只出现一次，不重复闪动 */
   function renderHand(v) {
     var el = $('p0-hand');
     if (!v.hand) { el.innerHTML = ''; return; }
+    if (selectedCard && v.hand.indexOf(selectedCard) < 0) clearSelection();
     var drawn = v.drawn;
     var rest = v.hand.slice();
     if (drawn) {
@@ -876,38 +950,48 @@
         t.classList.add('drop');
       }
     });
-    if (selectedNode && selectedNode.parentNode !== el) { selectedNode = null; selectedCard = null; }
+    if (selectedNode && (selectedNode.parentNode !== el || selectedNode.dataset.card !== selectedCard)) clearSelection();
   }
 
   function onHandClick(e) {
     var v = currentView;
     if (!v || v.over || v.phase !== 'discard' || v.turn !== v.seat) return;
+    if (isPaused(v)) { toast('牌局已暂停，先点「继续」'); return; }
     var t = e.target.closest ? e.target.closest('.tile') : null;
     if (!t || t.parentNode !== $('p0-hand')) return;
     var card = t.dataset.card;
     NJAudio.sfx('tap');
+    // 只负责选中 / 取消选中，真正打出交给「出牌」按钮
     if (selectedNode === t) {
-      selectedNode = null; selectedCard = null;
-      t.classList.remove('sel');
-      playTile(card);
-      return;
+      clearSelection();
+    } else {
+      var prev = document.querySelectorAll('#p0-hand .tile.sel');
+      for (var i = 0; i < prev.length; i++) prev[i].classList.remove('sel');
+      selectedNode = t; selectedCard = card;
+      t.classList.add('sel');
     }
-    var prev = document.querySelectorAll('#p0-hand .tile.sel');
-    for (var i = 0; i < prev.length; i++) prev[i].classList.remove('sel');
-    selectedNode = t; selectedCard = card;
-    t.classList.add('sel');
+    updateDiscardBtn(v);
+  }
+
+  function onDiscardClick() {
+    var v = currentView;
+    if (!v || v.over || v.phase !== 'discard' || v.turn !== v.seat) return;
+    if (isPaused(v)) { toast('牌局已暂停，先点「继续」'); return; }
+    if (!selectedCard) { toast('先点一张要打出的手牌'); return; }
+    playTile(selectedCard);
   }
 
   var actSig = '';
   function renderActions(v) {
-    var bar = $('actions');
+    var list = $('act-list');
+    if (!list) return;
     var acts = (!v.over && v.actions) ? v.actions.slice() : [];
     var order = ['hu', 'gang', 'peng', 'angang', 'bugang', 'pass'];
     acts.sort(function (a, b) { return order.indexOf(a.type) - order.indexOf(b.type); });
     var sig = acts.map(function (a) { return a.type + ':' + (a.card || ''); }).join(',');
     if (sig === actSig) return;
     actSig = sig;
-    bar.innerHTML = '';
+    list.innerHTML = '';
     if (!acts.length) return;
     acts.forEach(function (a) {
       var b = document.createElement('button');
@@ -915,12 +999,12 @@
       b.className = 'act-btn' + (a.type === 'hu' ? ' hu' : '') + (a.type === 'pass' ? ' pass' : '');
       b.textContent = label;
       b.onclick = function () { doAction(a); };
-      bar.appendChild(b);
+      list.appendChild(b);
     });
   }
 
   function doAction(a) {
-    selectedNode = null; selectedCard = null;
+    clearSelection();
     if (mode === 'solo') {
       var r;
       if (soloGame.phase === 'claim') r = NJGame.respond(soloGame, 0, a.type);
@@ -933,14 +1017,16 @@
       else msg = { t: 'act', action: a };
       sendWhenOpen(msg);
     }
+    updateDiscardBtn(currentView);
   }
 
   function playTile(card) {
-    selectedNode = null; selectedCard = null;
+    clearSelection();
+    updateDiscardBtn(currentView);   // 立即置灰，防止连点重复出牌
     NJAudio.sfx('tap');
     if (mode === 'solo') {
       var r = NJGame.discard(soloGame, 0, card);
-      if (r.err) { toast(r.err); return; }
+      if (r.err) { toast(r.err); updateDiscardBtn(currentView); return; }
       soloStep();
     } else {
       sendWhenOpen({ t: 'discard', card: card });

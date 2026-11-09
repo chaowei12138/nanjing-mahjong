@@ -117,7 +117,21 @@
             <div class="tc-track"><i id="tc-fill"></i></div>
             <span id="tc-txt">2:00</span>
           </div>
-          <div id="center-wall">144</div>
+          <div class="board-info" id="board-info">
+            <div class="bi-cell">
+              <div class="bi-num" id="center-wall">144</div>
+              <div class="bi-lab">剩余牌数</div>
+            </div>
+            <div class="bi-div"></div>
+            <div class="bi-cell">
+              <div class="bi-num bi-num-flower" id="center-flower">20</div>
+              <div class="bi-lab">剩余花牌</div>
+            </div>
+          </div>
+          <div class="bi-left">
+            <span class="bi-left-lab">未出的花牌</span>
+            <div class="bi-left-tiles" id="center-flower-left"></div>
+          </div>
         </div>
         <div id="toast" class="toast"></div>
       </div>
@@ -127,7 +141,13 @@
       <div class="seat me" id="p0">
         <div class="flowerrow" id="p0-flowers"></div>
         <div class="meldrow" id="p0-melds"></div>
-        <div class="actionbar" id="actions"></div>
+        <div class="actionbar" id="actions">
+          <div class="act-list" id="act-list"></div>
+          <button id="btn-discard" class="discard-btn off" type="button" title="先点一张手牌，再点这里打出">
+            <span class="db-main" id="db-label">出牌</span>
+            <span class="db-sub" id="db-sub">先选一张牌</span>
+          </button>
+        </div>
         <div class="handrow" id="p0-hand"></div>
       </div>
 

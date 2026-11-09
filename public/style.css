@@ -270,7 +270,29 @@ body.center-board .board {
   text-align: center; pointer-events: none; width: 100%;
 }
 #center-turn { font-size: 10.5px; color: #6f8d80; letter-spacing: .2em; white-space: nowrap; }
-#center-wall { font-size: 30px; font-weight: 200; color: rgba(255,255,255,.11); font-variant-numeric: tabular-nums; margin-top: 1px; line-height: 1.1; }
+/* 局面信息板：放大显示剩余牌数 / 剩余花牌 */
+.board-info {
+  display: inline-flex; align-items: center; justify-content: center; gap: 16px;
+  margin: 8px auto 0; padding: 7px 20px; border-radius: 14px;
+  background: rgba(4, 22, 16, .58);
+  border: 1px solid rgba(227, 182, 100, .18);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .05);
+  backdrop-filter: blur(3px);
+}
+.bi-cell { min-width: 86px; display: flex; flex-direction: column; align-items: center; }
+.bi-num {
+  font-size: clamp(30px, calc(var(--bh) * 0.072), 52px); line-height: 1;
+  font-weight: 600; letter-spacing: .02em; font-variant-numeric: tabular-nums;
+  color: #eaf6ec; text-shadow: 0 2px 12px rgba(140, 230, 180, .3);
+}
+.bi-num-flower { color: var(--gold); text-shadow: 0 2px 14px rgba(227, 182, 100, .4); }
+.bi-lab { margin-top: 6px; font-size: 11px; letter-spacing: .18em; color: #8fae9f; white-space: nowrap; }
+.bi-div { width: 1px; height: 44px; background: linear-gradient(180deg, transparent, rgba(227,182,100,.38), transparent); }
+.bi-left { margin: 7px auto 0; display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 340px; }
+.bi-left-lab { font-size: 10px; letter-spacing: .18em; color: #6f8d80; }
+.bi-left-tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; max-height: 54px; overflow: hidden; }
+.bi-left-tiles .tile { margin: 0; }
+.bi-left-tiles:empty::after { content: '已全部翻出'; font-size: 10px; color: #6f8d80; }
 
 /* 倒计时 */
 .turnclock { display: none; align-items: center; justify-content: center; gap: 6px; margin: 5px auto 0; width: 108px; }
@@ -335,12 +357,36 @@ body.center-board .board {
 .actionbar {
   position: absolute; left: 50%; transform: translateX(-50%);
   bottom: calc(var(--th) + 6px);
-  display: flex; gap: 8px; align-items: flex-end; z-index: 22;
+  display: none; gap: 8px; align-items: center; z-index: 22;
   padding: 5px; border-radius: 26px;
   background: rgba(6,26,20,.62); backdrop-filter: blur(6px);
   border: 1px solid rgba(227,182,100,.16);
 }
-.actionbar:empty { display: none; }
+.actionbar.show { display: flex; }
+.act-list { display: flex; gap: 8px; align-items: center; }
+.act-list:empty { display: none; }
+/* 出牌按钮：选好牌才可点，避免误出 */
+.discard-btn {
+  height: 44px; min-width: 104px; padding: 0 16px; border-radius: 20px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border: 1px solid rgba(227,182,100,.28); background: rgba(255,255,255,.05);
+  color: #8ea89a; font-size: 15px; font-weight: 600; letter-spacing: .1em;
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+  transition: transform .08s, background .2s, color .2s;
+}
+.db-main { font-size: 15px; font-weight: 600; letter-spacing: .1em; }
+.db-sub { font-size: 9.5px; font-weight: 400; letter-spacing: 0; opacity: .8; }
+.discard-btn.off { opacity: .8; }
+.discard-btn.ready {
+  color: #241a06; background: linear-gradient(180deg, #f0cf8a, #d0a550);
+  border-color: #ffe6b0; box-shadow: 0 4px 16px rgba(227,182,100,.3);
+  animation: discPulse 1.7s ease-in-out infinite;
+}
+.discard-btn:active { transform: scale(.95); }
+@keyframes discPulse {
+  0%, 100% { box-shadow: 0 4px 16px rgba(227,182,100,.28); }
+  50% { box-shadow: 0 4px 22px rgba(227,182,100,.58); }
+}
 .act-btn {
   height: 40px; min-width: 56px; padding: 0 14px; border-radius: 20px;
   border: 1px solid rgba(227,182,100,.45);
@@ -661,6 +707,27 @@ body.rot .overlay {
   .seat.top { top: 26px; }
   .center { top: 66px; bottom: calc(var(--th) + 50px); }
   .river.top, .river.bottom { height: 42px; }
+}
+/* 局面信息板在矮屏 / 旋转屏压缩，避免与牌河重叠 */
+body.short .board-info { gap: 10px; margin-top: 4px; padding: 4px 12px; }
+body.short .bi-cell { min-width: 66px; }
+body.short .bi-num { font-size: 26px; }
+body.short .bi-lab { margin-top: 2px; font-size: 9px; letter-spacing: .1em; }
+body.short .bi-div { height: 30px; }
+body.short .bi-left { margin-top: 4px; gap: 2px; }
+body.short .bi-left-lab { display: none; }
+body.short .bi-left-tiles { max-height: 22px; }
+body.short .bi-left-tiles .tile { transform: scale(.82); transform-origin: center; }
+@media (max-height: 480px) {
+  .board-info { gap: 10px; margin-top: 4px; padding: 4px 12px; }
+  .bi-cell { min-width: 66px; }
+  .bi-num { font-size: 26px; }
+  .bi-lab { margin-top: 2px; font-size: 9px; letter-spacing: .1em; }
+  .bi-div { height: 30px; }
+  .bi-left { margin-top: 4px; gap: 2px; }
+  .bi-left-lab { display: none; }
+  .bi-left-tiles { max-height: 22px; }
+  .bi-left-tiles .tile { transform: scale(.82); transform-origin: center; }
 }
 
 /* 横屏矮屏：结算/验证弹窗压缩 */
