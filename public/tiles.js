@@ -70,8 +70,8 @@
     if (n === 8) {
       // 八条：按参考牌面，两条粗竹带折成 M / W（左竖—上斜—下斜—右竖）
       var bar = function (d) {
-        return '<path d="' + d + '" fill="none" stroke="#0d5433" stroke-width="9.6" stroke-linecap="round" stroke-linejoin="round"/>' +
-          '<path d="' + d + '" fill="none" stroke="' + GRN2 + '" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
+        return '<path d="' + d + '" fill="none" stroke="#0d5433" stroke-width="8.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '<path d="' + d + '" fill="none" stroke="' + GRN2 + '" stroke-width="5.9" stroke-linecap="round" stroke-linejoin="round"/>' +
           '<path d="' + d + '" fill="none" stroke="#eef6ea" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round" opacity=".62"/>';
       };
       return bar('M14,10 L14,34 L30,18 L46,34 L46,10') +
