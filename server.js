@@ -134,7 +134,7 @@ function roomInfo(room) {
     t: 'room', code: room.code, started: room.started,
     hostId: room.hostId, points: room.points,
     scores: room.scores.slice(),
-    seats: room.seats.map((s, i) => s ? { seat: i, name: s.name, isBot: s.isBot, connected: s.connected, score: room.scores[i] } : null)
+    seats: room.seats.map((s, i) => s ? { seat: i, id: s.id || '', name: s.name, isBot: s.isBot, connected: s.connected, score: room.scores[i] } : null)
   };
 }
 
@@ -283,8 +283,15 @@ function setPaused(room, on, seat) {
 /* ---------------- WebSocket ---------------- */
 let nextId = 1;
 
-wss.on('connection', ws => {
-  ws.id = 'u' + (nextId++);
+wss.on('connection', (ws, req) => {
+  // 客户端带稳定 id：同一浏览器刷新 / 多标签 / 重复点链接都算同一个人
+  let cid = '';
+  try {
+    const u = new URL(req.url, 'http://x');
+    const c = u.searchParams.get('cid') || '';
+    if (/^[A-Za-z0-9_-]{6,40}$/.test(c)) cid = c;
+  } catch (e) {}
+  ws.id = cid || ('u' + (nextId++));
   ws.room = null;
   ws.seat = -1;
 
@@ -299,6 +306,7 @@ wss.on('connection', ws => {
     if (!room) return;
     const s = room.seats[ws.seat];
     if (!s) return;
+    if (s.ws !== ws) return;   // 座位已被同一人的新连接接管，别把新连接标成掉线
     s.connected = false;
     s.ws = null;
     s.isBot = true;      // 掉线由机器人接管，不卡局
@@ -315,6 +323,8 @@ function handle(ws, msg) {
     case 'join': return doJoin(ws, msg);
     case 'start': return doStart(ws);
     case 'again': return doAgain(ws);
+    case 'kick': return doKick(ws, msg);
+    case 'leave': return doLeave(ws);
     case 'discard': return doDiscard(ws, msg);
     case 'act': return doAct(ws, msg);
     case 'pause': {
@@ -341,10 +351,15 @@ function handle(ws, msg) {
 }
 
 function doCreate(ws, msg) {
+  // 重复点「创建房间」：还坐在自己没开局的房里就直接回去，不新建垃圾房
+  if (ws.room && !ws.room.started && ws.room.hostId === ws.id) {
+    ws.room.points = Math.max(100, Math.min(100000, parseInt(msg.points, 10) || ws.room.points));
+    return send(ws, roomInfo(ws.room));
+  }
   const room = newRoom(msg.points);
   room.hostId = ws.id;
   const name = String(msg.name || '玩家').slice(0, 8);
-  room.seats[0] = { name, isBot: false, ws, connected: true };
+  room.seats[0] = { id: ws.id, name, isBot: false, ws, connected: true };
   rooms.set(room.code, room);
   ws.room = room; ws.seat = 0;
   send(ws, roomInfo(room));
@@ -354,19 +369,79 @@ function doJoin(ws, msg) {
   const code = String(msg.code || '').toUpperCase().trim();
   const room = rooms.get(code);
   if (!room) return send(ws, { t: 'error', msg: '房间不存在或已解散' });
+  const name = String(msg.name || '玩家').slice(0, 8);
+
+  // 同一个人（同一浏览器）重复进房 / 刷新 / 多标签：复用原座位，顶掉旧连接
+  const mine = room.seats.findIndex(s => s && s.id && s.id === ws.id);
+  if (mine >= 0) {
+    const old = room.seats[mine];
+    if (old.ws && old.ws !== ws) {
+      old.ws.room = null; old.ws.seat = -1;
+      send(old.ws, { t: 'info', msg: '你已在另一处打开牌桌，这里已断开' });
+      try { old.ws.close(); } catch (e) {}
+    }
+    room.seats[mine] = { id: ws.id, name, isBot: false, ws, connected: true };
+    ws.room = room; ws.seat = mine;
+    broadcastRoom(room);
+    if (room.game) broadcastState(room);
+    return;
+  }
+
   if (room.started) {
-    // 允许观战？简化：拒绝
     const free = room.seats.findIndex(s => !s);
     if (free < 0) return send(ws, { t: 'error', msg: '房间已开始' });
   }
-  let idx = room.seats.findIndex(s => s && s.isBot && !s.ws);
+  let idx = room.seats.findIndex(s => s && s.isBot && !s.ws && !s.id);
   if (idx < 0) idx = room.seats.findIndex(s => !s);
   if (idx < 0) return send(ws, { t: 'error', msg: '房间已满' });
-  const name = String(msg.name || '玩家').slice(0, 8);
-  room.seats[idx] = { name, isBot: false, ws, connected: true };
+  room.seats[idx] = { id: ws.id, name, isBot: false, ws, connected: true };
   ws.room = room; ws.seat = idx;
   broadcastRoom(room);
   if (room.game) broadcastState(room);
+}
+
+function doKick(ws, msg) {
+  const room = ws.room;
+  if (!room) return;
+  if (room.hostId !== ws.id) return send(ws, { t: 'error', msg: '只有房主可以踢人' });
+  if (room.started && room.game && !room.game.over) return send(ws, { t: 'error', msg: '牌局进行中不能踢人' });
+  const i = parseInt(msg.seat, 10);
+  if (!(i >= 0 && i < 4) || i === ws.seat) return;
+  const s = room.seats[i];
+  if (!s || (!s.ws && !s.id)) return;
+  const victim = s.ws;
+  room.seats[i] = null;
+  if (victim) {
+    victim.room = null; victim.seat = -1;
+    send(victim, { t: 'kicked', msg: '你已被房主移出房间' });
+    try { victim.close(); } catch (e) {}
+  }
+  broadcastRoom(room);
+}
+
+function doLeave(ws) {
+  const room = ws.room;
+  if (!room) return;
+  const i = ws.seat;
+  const s = room.seats[i];
+  ws.room = null; ws.seat = -1;
+  if (!s || s.ws !== ws) return;
+  const playing = room.game && !room.game.over;
+  if (playing) {
+    s.connected = false; s.ws = null; s.isBot = true;   // 牌局中退出：AI 接管
+  } else {
+    room.seats[i] = null;
+  }
+  // 房主走了，交给下一个真人
+  if (room.hostId === ws.id) {
+    const ni = room.seats.findIndex(x => x && x.ws && !x.isBot);
+    room.hostId = ni >= 0 ? room.seats[ni].id : '';
+  }
+  broadcastRoom(room);
+  if (!room.seats.some(x => x && x.ws)) {
+    clearTimer(room);
+    if (!playing) rooms.delete(room.code);
+  }
 }
 
 function doStart(ws) {

@@ -7,7 +7,18 @@
   var soloGame = null;
   var soloScores = null, soloRound = 0, soloDealer = 0;
   var soloPaused = false, soloClockKey = '', soloFired = false;
-  var ws = null, mySeat = 0, myId = null, isHost = false;
+  var ws = null, mySeat = 0, myId = null, isHost = false, superseded = false;
+
+  /* 本机固定身份：刷新、重复点链接、多标签都算同一个人，不再重复占座 */
+  var CID = (function () {
+    var k = 'nj_cid', v = '';
+    try { v = localStorage.getItem(k) || ''; } catch (e) {}
+    if (!/^[A-Za-z0-9_-]{6,40}$/.test(v)) {
+      v = 'c' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36).slice(-4);
+      try { localStorage.setItem(k, v); } catch (e) {}
+    }
+    return v;
+  })();
   var currentView = null;
   var lastResult = null;
   var prevMelds = [0, 0, 0, 0], prevRound = -1;
@@ -291,7 +302,12 @@
   var roomCode = '';
 
   function leaveRoom() {
-    if (ws) { try { ws.close(); } catch (e) {} ws = null; }
+    if (ws) {
+      try { sendWhenOpen({ t: 'leave' }); } catch (e) {}
+      var w = ws; ws = null;
+      setTimeout(function () { try { w.close(); } catch (e) {} }, 50);
+    }
+    mode = '';
     roomCode = '';
     history.replaceState(null, '', '/');
     show('lobby');
@@ -306,22 +322,38 @@
 
   function connect() {
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host);
+    ws = new WebSocket(proto + '//' + location.host + '/?cid=' + encodeURIComponent(CID));
     ws.onmessage = function (ev) {
       var m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
       handle(m);
     };
-    ws.onclose = function () { if (mode === 'online') toast('连接已断开'); };
+    ws.onclose = function () {
+      if (!superseded && mode === 'online') toast('连接已断开');
+      superseded = false;
+    };
   }
 
   function handle(m) {
     if (m.t === 'welcome') { myId = m.id; return; }
     if (m.t === 'error') { toast(m.msg); return; }
+    if (m.t === 'info') { superseded = true; toast(m.msg); return; }
+    if (m.t === 'kicked') {
+      toast(m.msg || '你已被房主移出房间');
+      mode = '';
+      if (ws) { var w0 = ws; ws = null; try { w0.close(); } catch (e) {} }
+      roomCode = '';
+      try { history.replaceState(null, '', '/'); } catch (e) {}
+      show('lobby');
+      return;
+    }
     if (m.t === 'notice') { onNotice(m); return; }
     if (m.t === 'room') {
       mode = 'online';
-      roomCode = m.code;
+      if (roomCode !== m.code) {
+        roomCode = m.code;
+        try { history.replaceState(null, '', '/?room=' + m.code); } catch (e) {}
+      }
       isHost = (m.hostId === myId);
       renderRoom(m);
       if (!m.started) { show('room'); }
@@ -374,17 +406,43 @@
         sc.className = 'sc';
         sc.textContent = ((m.scores && m.scores[i] != null) ? m.scores[i] : m.points) + ' 分';
         d.appendChild(sc);
+        var self = s.id && s.id === CID;
         var tag = document.createElement('span');
         tag.className = 'tag' + (s.isBot ? ' bot' : '');
-        tag.textContent = s.isBot ? 'AI' : (s.connected ? (isHost && i === 0 ? '房主' : '在线') : '离线');
+        tag.textContent = s.isBot ? 'AI' : (self && isHost ? '房主·我' : (self ? '我' : (s.connected ? '在线' : '离线')));
         d.appendChild(tag);
+        if (isHost && !m.started && !self && !s.isBot) {
+          var kick = document.createElement('button');
+          kick.className = 'kick';
+          kick.textContent = '踢出';
+          kick.title = '把这位玩家移出房间';
+          kick.onclick = function (seat) {
+            return function (ev) {
+              ev.stopPropagation();
+              if (confirm('把「' + (m.seats[seat] ? m.seats[seat].name : '') + '」移出房间？')) {
+                sendWhenOpen({ t: 'kick', seat: seat });
+              }
+            };
+          }(i);
+          d.appendChild(kick);
+        }
       }
       list.appendChild(d);
     });
+    var humans = m.seats.filter(function (x) { return x && !x.isBot; }).length;
     var hint = $('room-hint');
-    if (hint) hint.textContent = '每人初始 ' + (m.points || startPoints) + ' 分 · 1 番 = 1 分。把链接发到微信群，好友点开即可入座；不足 4 人由 AI 补位。';
-    $('btn-start').style.display = isHost ? 'flex' : 'none';
-    $('btn-start').textContent = m.started ? '进行中' : '开始游戏';
+    if (hint) hint.textContent = isHost
+      ? (humans >= 4 ? '四位已到齐，点「开始游戏」开局；想换人可以先踢出再让对方重进。'
+         : '每人初始 ' + (m.points || startPoints) + ' 分 · 1 番 = 1 分。把链接发到微信群，好友点开即可入座；不足 4 人由 AI 补位，也可以现在就开。')
+      : '每人初始 ' + (m.points || startPoints) + ' 分 · 1 番 = 1 分。等房主点「开始游戏」；不足 4 人由 AI 补位。';
+    var sb = $('btn-start'), cb = $('btn-copy');
+    sb.style.display = isHost ? 'flex' : 'none';
+    if (m.started) sb.textContent = '进行中';
+    else sb.textContent = humans >= 4 ? '开始游戏 · 4 人已满' : '开始游戏';
+    // 人齐了，开始才是主操作；没齐时突出「复制邀请链接」
+    var full = humans >= 4;
+    sb.classList.toggle('primary', full && isHost);
+    if (cb) cb.classList.toggle('primary', !full);
   }
 
   /* ---------- 单机 ---------- */

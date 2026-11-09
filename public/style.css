@@ -123,6 +123,12 @@ html, body {
 .seat-item .nm { flex: 1; font-size: 15px; }
 .seat-item .tag { font-size: 10.5px; padding: 3px 8px; border-radius: 20px; background: rgba(227,182,100,.14); color: var(--gold); }
 .seat-item .tag.bot { background: rgba(255,255,255,.07); color: #8b9c93; }
+.seat-item .kick {
+  font-size: 10.5px; padding: 4px 9px; border-radius: 20px; cursor: pointer;
+  background: rgba(255,120,100,.1); color: #e09080;
+  border: 1px solid rgba(255,120,100,.26); font-family: inherit;
+}
+.seat-item .kick:active { background: rgba(255,120,100,.2); }
 
 .room-actions { display: flex; gap: 12px; }
 .room-actions .btn { flex: 1; }
@@ -687,4 +693,20 @@ body.short .modal-actions .btn { height: 38px; font-size: 14px; }
   .btn, .lobby-actions .btn { height: 40px; font-size: 14px; }
   .join-row .btn { height: 40px; }
   .fair-note { margin-top: 10px; font-size: 10px; }
+}
+
+/* 横屏 / 矮屏：房间等待页压缩，四个座位 + 开始按钮一屏放得下 */
+@media (max-height: 540px) {
+  #room { padding: 12px 18px; overflow-y: auto; }
+  .room-inner { max-width: 480px; }
+  .back { font-size: 14px; padding: 2px 0; }
+  #room h2 { font-size: 16px; margin: 8px 0 12px; }
+  .seat-list { gap: 7px; margin-bottom: 12px; }
+  .seat-item { padding: 8px 13px; gap: 10px; border-radius: 10px; }
+  .seat-item .idx { width: 22px; height: 22px; font-size: 11px; }
+  .seat-item .nm { font-size: 14px; }
+  .seat-item .sc { font-size: 11px; }
+  .seat-item .tag, .seat-item .kick { padding: 3px 8px; font-size: 10px; }
+  .room-actions .btn { height: 40px; font-size: 14px; }
+  .hint { margin-top: 9px; font-size: 11px; line-height: 1.5; }
 }
