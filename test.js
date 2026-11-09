@@ -94,6 +94,43 @@ const goodWin = NJ.evaluateWin({
 });
 ok('非门清 + 4 硬花可胡', !!goodWin);
 
+console.log('\n[8.5] 胡牌按钮与结算判定一致（缺花不能胡不再弹胡按钮）');
+// 构造：玩家1 破门清（有碰）、手牌差一张成胡，响应玩家0 打出的 t1
+function claimState(drawCount, flowers) {
+  const g = G.createGame({ names: ['A', 'B', 'C', 'D'] });
+  const p = g.players[1];
+  p.hand = ['w1','w2','w3','w4','w5','w6','w7','w8','w9','t1'];
+  p.melds = [{ type: 'peng', card: 'f1', from: 0 }];
+  p.flowers = flowers;
+  g.drawCount = drawCount;
+  g.lastDiscard = 't1'; g.lastPlayer = 0; g.phase = 'claim';
+  g.claimQueue = NJ.claimsFor(g, 0, 't1'); g.claimIdx = 0;
+  return g;
+}
+const lack = claimState(8, []);
+ok('缺花破门清：牌型成立但 evaluateWin 判不能胡', NJ.evaluateWin({
+  hand: NJ.sortHand(lack.players[1].hand.concat(['t1'])),
+  melds: lack.players[1].melds, flowers: [], selfDraw: false
+}) === null);
+ok('缺花破门清：claimsFor 不再下发 hu 按钮',
+  !NJ.claimsFor(lack, 0, 't1').some(c => c.p === 1 && c.actions.indexOf('hu') >= 0));
+const rich = claimState(8, ['h1','h2','h3','h4']);
+ok('硬花够 4 张：claimsFor 正常下发 hu',
+  NJ.claimsFor(rich, 0, 't1').some(c => c.p === 1 && c.actions.indexOf('hu') >= 0));
+const vRich = G.viewFor(rich, 1);
+ok('响应阶段必有「过」按钮（不会卡住）', vRich.actions.some(a => a.type === 'pass'));
+ok('点胡能被服务端接受（按钮与结算一致）', (() => {
+  const r = G.respond(rich, 1, 'hu'); return r && !r.err && !!r.hu;
+})());
+const rich2 = claimState(8, ['h1','h2','h3','h4']);
+ok('点「过」能正常推进', !G.respond(rich2, 1, 'pass').err);
+
+console.log('\n[8.6] 动作 / 番种语音包');
+const fs = require('fs');
+const FX = ['peng','gang','angang','bugang','hu','zimo','dianpao','gangkai',
+  'qys','hys','pph','qidui','hhqd','chhqd','menqing','tianhu','dihu','whg','qqdd'];
+ok('19 个动作/番种语音文件齐全', FX.every(k => fs.existsSync('./public/voice/' + k + '.mp3')));
+
 console.log('\n[9] 整局模拟（4 个 AI 打到底）');
 let games = 0, huGames = 0, drawGames = 0;
 for (let gi = 0; gi < 200; gi++) {

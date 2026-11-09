@@ -251,12 +251,14 @@ body.center-board .board {
 }
 .flowerrow.col { flex-direction: row; flex-wrap: wrap; width: 72px; margin-top: 4px; justify-content: center; }
 .seat.right .flowerrow.col { justify-content: center; }
+/* 自己的花牌 / 碰杠：都居中摆放，并给左右两侧的动作按钮留出通道 */
 #p0-flowers {
-  position: static; display: flex; flex-wrap: wrap; justify-content: flex-end;
-  align-items: center; gap: 2px; padding-right: calc(var(--pad) + 2px); margin-bottom: 2px;
-  width: 100%;
+  position: static; display: flex; flex-wrap: wrap; justify-content: center;
+  align-items: center; gap: 2px; margin: 0 auto 2px;
+  width: 100%; max-width: calc(100% - 340px);
 }
 #p0-flowers:empty { display: none; }
+#p0-melds { max-width: calc(100% - 320px); margin: 0 auto 2px; }
 
 /* 中央 */
 .center {
@@ -353,17 +355,25 @@ body.center-board .board {
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
+/* 动作按钮（碰杠胡过）靠左、出牌按钮靠右，中间留给居中的花牌 / 碰杠，
+   两者永远不会互相遮挡：缺花不能胡时也不会出现「胡按钮压住出牌按钮」 */
 .actionbar {
-  position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: calc(var(--th) + 6px);
+  position: absolute; left: 0; right: 0; transform: none;
+  bottom: calc(var(--th) + 14px);
   display: none; gap: 8px; align-items: center; z-index: 22;
-  padding: 5px; border-radius: 26px;
-  background: rgba(6,26,20,.62); backdrop-filter: blur(6px);
-  border: 1px solid rgba(227,182,100,.16);
+  padding: 0 calc(var(--pad) + 2px);
+  pointer-events: none;
 }
 .actionbar.show { display: flex; }
-.act-list { display: flex; gap: 8px; align-items: center; }
+.actionbar > * { pointer-events: auto; }
+.act-list {
+  display: flex; gap: 6px; align-items: center;
+  padding: 4px; border-radius: 22px;
+  background: rgba(6,26,20,.66); backdrop-filter: blur(6px);
+  border: 1px solid rgba(227,182,100,.16);
+}
 .act-list:empty { display: none; }
+#btn-discard { margin-left: auto; }
 /* 出牌按钮：选好牌才可点，避免误出 */
 .discard-btn {
   height: 44px; min-width: 104px; padding: 0 16px; border-radius: 20px;
@@ -721,6 +731,19 @@ body.short .bi-div { height: 30px; }
   .bi-num { font-size: 26px; }
   .bi-lab { margin-top: 2px; font-size: 9px; letter-spacing: .1em; }
   .bi-div { height: 30px; }
+}
+/* 矮屏 / 旋转屏：动作按钮收一档，避免与花牌、手牌抢纵向空间 */
+body.short .discard-btn { height: 36px; min-width: 92px; padding: 0 12px; }
+body.short .act-btn { height: 34px; min-width: 48px; padding: 0 10px; font-size: 13px; }
+body.short .db-main { font-size: 13px; }
+body.short .db-sub { font-size: 9px; }
+body.short .actionbar { bottom: calc(var(--th) + 10px); }
+@media (max-height: 480px) {
+  .discard-btn { height: 36px; min-width: 92px; padding: 0 12px; }
+  .act-btn { height: 34px; min-width: 48px; padding: 0 10px; font-size: 13px; }
+  .db-main { font-size: 13px; }
+  .db-sub { font-size: 9px; }
+  .actionbar { bottom: calc(var(--th) + 10px); }
 }
 
 /* 横屏矮屏：结算/验证弹窗压缩 */

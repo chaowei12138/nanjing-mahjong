@@ -31,6 +31,15 @@
   /* 花牌总数 20（中发白 12 + 春夏秋冬梅兰竹菊 8）：旧版服务端没下发 wallFlowers 时兜底 */
   var FLOWER_TOTAL = NJ.buildWall().filter(NJ.isFlower).length;
 
+  /* 番型名 → 响亮报牌语音 key（与 core.js evaluateWin 的 fans[].name 对齐） */
+  var FAN_VOICE = {
+    '清一色': 'qys', '混一色': 'hys', '碰碰胡': 'pph',
+    '七对': 'qidui', '豪华七对': 'hhqd', '超豪华七对': 'chhqd',
+    '全球独钓': 'qqdd', '门清': 'menqing', '天胡': 'tianhu', '地胡': 'dihu',
+    '小杠开花': 'gangkai', '大杠开花': 'gangkai', '杠上开花': 'gangkai',
+    '自摸': 'zimo', '无花果': 'whg'
+  };
+
   function clearSelection() {
     if (selectedNode) selectedNode.classList.remove('sel');
     selectedNode = null; selectedCard = null;
@@ -678,9 +687,12 @@
       if (last.type === 'peng') {
         NJFx.peng(nm + ' · ' + p.name + ' 碰');
         NJAudio.sfx('peng');
+        NJAudio.call([{ key: 'peng', text: '碰' }]);
       } else if (isGang) {
-        NJFx.gang(nm + ' · ' + p.name + (last.type === 'angang' ? ' 暗杠' : last.type === 'bugang' ? ' 补杠' : ' 杠'));
+        var gtxt = last.type === 'angang' ? '暗杠' : last.type === 'bugang' ? '补杠' : '杠';
+        NJFx.gang(nm + ' · ' + p.name + ' ' + gtxt);
         NJAudio.sfx('gang');
+        NJAudio.call([{ key: last.type === 'angang' ? 'angang' : last.type === 'bugang' ? 'bugang' : 'gang', text: gtxt }]);
       }
     });
   }
@@ -965,6 +977,10 @@
     var list = $('act-list');
     if (!list) return;
     var acts = (!v.over && v.actions) ? v.actions.slice() : [];
+    // 兜底：响应阶段一定要有「过」，避免旧服务端/异常状态下卡住不能继续
+    if (acts.length && v.phase === 'claim' && !acts.some(function (a) { return a.type === 'pass'; })) {
+      acts.push({ type: 'pass' });
+    }
     var order = ['hu', 'gang', 'peng', 'angang', 'bugang', 'pass'];
     acts.sort(function (a, b) { return order.indexOf(a.type) - order.indexOf(b.type); });
     var sig = acts.map(function (a) { return a.type + ':' + (a.card || ''); }).join(',');
@@ -1024,6 +1040,19 @@
     if (r.type !== 'draw') {
       NJFx.hu((r.type === 'zimo' ? '自摸' : '点炮') + ' · ' + r.total + ' 番');
       NJAudio.sfx('hu');
+      // 响亮女声：胡了 + 自摸/点炮 + 番型（清一色、杠上开花、七对…最多 3 个）
+      var items = [{ key: 'hu', text: '胡了' }];
+      items.push(r.type === 'zimo' ? { key: 'zimo', text: '自摸' } : { key: 'dianpao', text: '点炮' });
+      var fans = ((r.ev && r.ev.fans) || []).slice().sort(function (a, b) { return (b.pt || 0) - (a.pt || 0); });
+      var used = {}, added = 0;
+      for (var fi = 0; fi < fans.length && added < 3; fi++) {
+        var fk = FAN_VOICE[fans[fi].name];
+        if (!fk || used[fk] || fk === 'zimo') continue;
+        used[fk] = 1;
+        items.push({ key: fk, text: fans[fi].name });
+        added++;
+      }
+      NJAudio.call(items);
     }
     clearTimeout(resultTimer);
     resultTimer = setTimeout(function () { showResult(r, v); }, r.type === 'draw' ? 250 : 1150);

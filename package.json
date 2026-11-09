@@ -1,6 +1,6 @@
 {
   "name": "nanjing-mahjong",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "南京麻将 · 好友联机（144张，可碰可杠，可验证公平发牌）",
   "main": "server.js",
   "scripts": {

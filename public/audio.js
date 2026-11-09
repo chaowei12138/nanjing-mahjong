@@ -1,7 +1,7 @@
 /* 南京麻将 · 声音（Web Audio 实时合成，无外部音频文件） */
 (function (root) {
   'use strict';
-  var ctx = null, master = null, musicBus = null, sfxBus = null, voiceBus = null;
+  var ctx = null, master = null, musicBus = null, sfxBus = null, voiceBus = null, fxVoiceBus = null;
   var started = false, timer = null, nextTime = 0, step = 0, melodyIdx = 4;
   var enabled = true;
   try { enabled = localStorage.getItem('nj_sound') !== '0'; } catch (e) {}
@@ -10,12 +10,17 @@
   var voiceOn = true;
   try { voiceOn = localStorage.getItem('nj_voice') !== '0'; } catch (e) {}
   var vbuf = {}, vloading = {}, vfetching = false;
-  var VOICE_KEYS = ['w1','w2','w3','w4','w5','w6','w7','w8','w9',
+  // 普通报牌（牌名 + 超时）与动作/番种报牌分开：后者走更响的通道，可连播多段
+  var CARD_KEYS = ['w1','w2','w3','w4','w5','w6','w7','w8','w9',
     't1','t2','t3','t4','t5','t6','t7','t8','t9',
     'b1','b2','b3','b4','b5','b6','b7','b8','b9',
     'f1','f2','f3','f4','h1','h2','h3','timeout'];
+  var FX_KEYS = ['peng','gang','angang','bugang','hu','zimo','dianpao','gangkai',
+    'qys','hys','pph','qidui','hhqd','chhqd','menqing','tianhu','dihu','whg','qqdd'];
+  var VOICE_KEYS = CARD_KEYS.concat(FX_KEYS);
   var VOICE_DIR = 'voice/';
-  var VOICE_VER = '3';   // 语音包版本，改内容时递增，避免浏览器用旧缓存
+  var VOICE_VER = '4';   // 语音包版本，改内容时递增，避免浏览器用旧缓存
+  var FX_GAIN = 1.42;   // 动作/番种报牌比普通报牌略大
 
   var PENTA = [293.66, 329.63, 369.99, 440.00, 493.88, 587.33, 659.25, 739.99];
   var BASS = [73.42, 73.42, 110.00, 98.00];
@@ -30,6 +35,8 @@
     musicBus = ctx.createGain(); musicBus.gain.value = enabled ? 0.5 : 0; musicBus.connect(master);
     sfxBus = ctx.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
     voiceBus = ctx.createGain(); voiceBus.gain.value = 1; voiceBus.connect(master);
+    // 动作/番种专用通道：音量比普通报牌略大，且 duck 时不被压得过低
+    fxVoiceBus = ctx.createGain(); fxVoiceBus.gain.value = FX_GAIN; fxVoiceBus.connect(master);
     return ctx;
   }
 
@@ -233,14 +240,73 @@
     } catch (e) {}
   }
 
+  /* ---------- 动作 / 番种报牌：更响、可连播、优先级高于普通报牌 ---------- */
+  var curFx = null, fxQueue = [], fxActive = false;
+
+  function stopFx() {
+    // 摘掉 onended 再停，避免旧队列的回调抢跑新队列
+    if (curFx) { curFx.onended = null; try { curFx.stop(); } catch (e) {} curFx = null; }
+  }
+
+  function startFx(item) {
+    if (!vbuf[item.key]) return false;
+    // 打断尚未播完的普通报牌，让动作语音先说清楚
+    if (curVoice) { try { curVoice.stop(); } catch (e) {} curVoice = null; }
+    var s = ctx.createBufferSource(), g = ctx.createGain();
+    s.buffer = vbuf[item.key]; g.gain.value = 1;
+    s.connect(g); g.connect(fxVoiceBus);
+    s.onended = function () {
+      if (curFx === s) curFx = null;
+      setTimeout(playNextFx, 100);   // 两句之间留一点气口
+    };
+    s.start(0);
+    curFx = s;
+    duck();
+    return true;
+  }
+
+  function playNextFx() {
+    if (!fxQueue.length) { fxActive = false; return; }
+    var item = fxQueue.shift();
+    if (startFx(item)) return;
+    loadOne(item.key);
+    // 语音包还没解码完，短暂等待后重试；实在没有就用系统语音兜底
+    var tries = 0;
+    var wait = setInterval(function () {
+      if (vbuf[item.key]) {
+        clearInterval(wait);
+        if (fxActive) startFx(item); else playNextFx();
+      } else if (++tries > 25) {
+        clearInterval(wait);
+        if (item.text) sysSay(item.text);
+        setTimeout(playNextFx, 350);
+      }
+    }, 60);
+  }
+
+  // items: [{ key:'peng', text:'碰' }, ...]，依次播报
+  function callFx(items) {
+    if (!voiceOn || !items || !items.length) return false;
+    if (!init()) { sysSay(items[0].text || ''); return false; }
+    if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+    stopFx();
+    fxQueue = items.slice(0, 5);   // 最多连播 5 段，避免结算时报太久
+    fxActive = true;
+    playNextFx();
+    return true;
+  }
+
   function say(key, text) {
     if (!voiceOn) return false;
+    // 动作/番种语音优先：正在播时不抢麦，避免把「碰」「清一色」打断
+    if (fxActive) return true;
     if (!init()) { sysSay(text || ''); return false; }
     if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
     var buf = vbuf[key];
     if (buf) { playBuffer(buf); duck(); return true; }
     loadOne(key);
     setTimeout(function () {
+      if (fxActive) return;
       if (vbuf[key]) { playBuffer(vbuf[key]); duck(); }
       else if (text) sysSay(text);
     }, 200);
@@ -253,15 +319,18 @@
     stop: stopMusic,
     sfx: sfx,
     say: say,
+    call: callFx,
     preload: preloadVoices,
     isOn: function () { return enabled; },
     isVoiceOn: function () { return voiceOn; },
     voiceCount: function () { return Object.keys(vbuf).length; },
+    fxGain: function () { return FX_GAIN; },
     toggle: function () { setEnabled(!enabled); return enabled; },
     toggleVoice: function () {
       voiceOn = !voiceOn;
       try { localStorage.setItem('nj_voice', voiceOn ? '1' : '0'); } catch (e) {}
-      if (voiceOn) { preloadVoices(); say('f1', '东风'); }
+      if (voiceOn) { fxActive = false; preloadVoices(); say('f1', '东风'); }
+      else { fxQueue = []; fxActive = false; stopFx(); }
       return voiceOn;
     },
     unlock: function () {

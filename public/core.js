@@ -326,7 +326,15 @@
       var pl = state.players[p];
       if (pl.hand.length + pl.melds.length * 3 !== 13) continue;
       var acts = [];
-      if (isWin(pl.hand.concat([card]), pl.melds.length)) acts.push('hu');
+      // 胡牌按钮必须用与结算完全一致的判定（含小胡限制、硬花数、门清），
+      // 否则会出现「牌型成了但花不够不能胡」却仍弹出胡按钮、点了又报错的死局
+      var ev = evaluateWin({
+        hand: sortHand(pl.hand.concat([card])),
+        melds: pl.melds, flowers: pl.flowers,
+        selfDraw: false, gangKai: 0,
+        isDi: state.drawCount <= 1 && p !== state.dealer
+      });
+      if (ev) acts.push('hu');
       var cnt = 0;
       for (var j = 0; j < pl.hand.length; j++) if (pl.hand[j] === card) cnt++;
       if (cnt >= 3) acts.push('gang');
@@ -342,7 +350,8 @@
     if (acts.indexOf('hu') >= 0) {
       var ev = evaluateWin({
         hand: sortHand(pl.hand.concat([state.lastDiscard])),
-        melds: pl.melds, flowers: pl.flowers, selfDraw: false
+        melds: pl.melds, flowers: pl.flowers, selfDraw: false, gangKai: 0,
+        isDi: state.drawCount <= 1 && p !== state.dealer
       });
       if (ev) return 'hu';
     }

@@ -317,6 +317,8 @@
         var cur = state.claimQueue[state.claimIdx];
         if (cur && cur.p === seat) {
           myActs = cur.actions.map(function (a) { return { type: a }; });
+          // 任何时候都能主动「过」：不想碰/杠/胡时可立即继续，不必干等超时
+          myActs.push({ type: 'pass' });
         }
       }
     }
