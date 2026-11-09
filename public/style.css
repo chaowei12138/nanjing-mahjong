@@ -234,22 +234,26 @@ body.center-board .board {
 .meldcol .meld .tile { margin-left: -3px; }
 .meldcol .meld .tile:first-child { margin-left: 0; }
 
-/* 花牌 */
-.flowerrow { display: flex; flex-wrap: wrap; gap: 1px; align-items: flex-start; }
-.flowerrow .tile { margin: 0; }
+/* 花牌：各家已摸到的花牌放大显示 */
+.flowerrow { display: flex; flex-wrap: wrap; gap: 2px; align-items: flex-start; }
+.flowerrow .tile {
+  margin: 0;
+  box-shadow: 0 2px 0 #c9bd9c, 0 3px 8px rgba(0,0,0,.45),
+              inset 0 1px 0 #fff, 0 0 0 1px rgba(227,182,100,.6);
+}
 .seat.top .flowerrow {
-  position: absolute; right: 100%; top: 28px; margin: 0 8px 0 0;
+  position: absolute; right: 100%; top: 24px; margin: 0 8px 0 0;
   width: 128px; justify-content: flex-end;
 }
 .seat.top .meldrow.mini {
   position: absolute; left: 100%; top: 28px; margin: 0 0 0 8px;
   width: 150px; justify-content: flex-start; flex-wrap: wrap;
 }
-.flowerrow.col { flex-direction: row; flex-wrap: wrap; width: 60px; margin-top: 4px; justify-content: center; }
+.flowerrow.col { flex-direction: row; flex-wrap: wrap; width: 72px; margin-top: 4px; justify-content: center; }
 .seat.right .flowerrow.col { justify-content: center; }
 #p0-flowers {
   position: static; display: flex; flex-wrap: wrap; justify-content: flex-end;
-  align-items: center; gap: 1px; padding-right: calc(var(--pad) + 2px); margin-bottom: 1px;
+  align-items: center; gap: 2px; padding-right: calc(var(--pad) + 2px); margin-bottom: 2px;
   width: 100%;
 }
 #p0-flowers:empty { display: none; }
@@ -288,11 +292,6 @@ body.center-board .board {
 .bi-num-flower { color: var(--gold); text-shadow: 0 2px 14px rgba(227, 182, 100, .4); }
 .bi-lab { margin-top: 6px; font-size: 11px; letter-spacing: .18em; color: #8fae9f; white-space: nowrap; }
 .bi-div { width: 1px; height: 44px; background: linear-gradient(180deg, transparent, rgba(227,182,100,.38), transparent); }
-.bi-left { margin: 7px auto 0; display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 340px; }
-.bi-left-lab { font-size: 10px; letter-spacing: .18em; color: #6f8d80; }
-.bi-left-tiles { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; max-height: 54px; overflow: hidden; }
-.bi-left-tiles .tile { margin: 0; }
-.bi-left-tiles:empty::after { content: '已全部翻出'; font-size: 10px; color: #6f8d80; }
 
 /* 倒计时 */
 .turnclock { display: none; align-items: center; justify-content: center; gap: 6px; margin: 5px auto 0; width: 108px; }
@@ -702,11 +701,13 @@ body.rot .overlay {
   40%, 60% { transform: translate3d(4px, -1px, 0); }
 }
 
-/* 极矮屏（横屏小手机）压缩纵向留白 */
+/* 极矮屏（横屏小手机）压缩纵向留白；花牌收一档，仍比原尺寸大 */
 @media (max-height: 380px) {
   .seat.top { top: 26px; }
   .center { top: 66px; bottom: calc(var(--th) + 50px); }
   .river.top, .river.bottom { height: 42px; }
+  .flowerrow .tile { --tw: 16px; --th: 23px; }
+  .flowerrow.col { width: 60px; }
 }
 /* 局面信息板在矮屏 / 旋转屏压缩，避免与牌河重叠 */
 body.short .board-info { gap: 10px; margin-top: 4px; padding: 4px 12px; }
@@ -714,20 +715,12 @@ body.short .bi-cell { min-width: 66px; }
 body.short .bi-num { font-size: 26px; }
 body.short .bi-lab { margin-top: 2px; font-size: 9px; letter-spacing: .1em; }
 body.short .bi-div { height: 30px; }
-body.short .bi-left { margin-top: 4px; gap: 2px; }
-body.short .bi-left-lab { display: none; }
-body.short .bi-left-tiles { max-height: 22px; }
-body.short .bi-left-tiles .tile { transform: scale(.82); transform-origin: center; }
 @media (max-height: 480px) {
   .board-info { gap: 10px; margin-top: 4px; padding: 4px 12px; }
   .bi-cell { min-width: 66px; }
   .bi-num { font-size: 26px; }
   .bi-lab { margin-top: 2px; font-size: 9px; letter-spacing: .1em; }
   .bi-div { height: 30px; }
-  .bi-left { margin-top: 4px; gap: 2px; }
-  .bi-left-lab { display: none; }
-  .bi-left-tiles { max-height: 22px; }
-  .bi-left-tiles .tile { transform: scale(.82); transform-origin: center; }
 }
 
 /* 横屏矮屏：结算/验证弹窗压缩 */

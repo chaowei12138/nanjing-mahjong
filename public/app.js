@@ -28,9 +28,8 @@
   var saidRound = -1, lastSaidSeq = -1, lastDrawSeq = -1;
   var selectedNode = null, selectedCard = null;
   var selDiscardSeq = -1, selRound = -1;
-  var flowerSig = '';
-  /* 全部花牌（中发白 12 + 春夏秋冬梅兰竹菊 8），用于推算「未出的花牌」 */
-  var ALL_FLOWERS = NJ.buildWall().filter(NJ.isFlower);
+  /* 花牌总数 20（中发白 12 + 春夏秋冬梅兰竹菊 8）：旧版服务端没下发 wallFlowers 时兜底 */
+  var FLOWER_TOTAL = NJ.buildWall().filter(NJ.isFlower).length;
 
   function clearSelection() {
     if (selectedNode) selectedNode.classList.remove('sel');
@@ -470,7 +469,7 @@
     prevMelds = [0, 0, 0, 0]; prevRound = -1; prevSigs = ['', '', '', ''];
     lastDrawSeq = -1; lastSaidSeq = -1; saidRound = -1;
     selectedNode = null; selectedCard = null;
-    selRound = -1; selDiscardSeq = -1; flowerSig = ''; actSig = '';
+    selRound = -1; selDiscardSeq = -1; actSig = '';
     soloGame = NJGame.createGame({
       names: [n, '小南', '阿京', '老陵'],
       bots: [false, true, true, true],
@@ -698,11 +697,10 @@
     $('round-info').textContent = '第 ' + v.round + ' 局 · ' +
       ['东', '南', '西', '北'][v.dealer] + '家坐庄';
     var fw = (v.wallFlowers != null) ? v.wallFlowers
-      : Math.max(0, ALL_FLOWERS.length - seenFlowerCount(v));
+      : Math.max(0, FLOWER_TOTAL - seenFlowerCount(v));
     $('wall-info').textContent = '余 ' + v.wallCount + ' 张 · 花 ' + fw;
     $('center-wall').textContent = v.wallCount;
     $('center-flower').textContent = fw;
-    renderFlowerLeft(v);
 
     // 新局 / 有人出牌后：清掉选中，避免残留高亮或误打
     if (v.round !== selRound || v.discardSeq !== selDiscardSeq) {
@@ -842,34 +840,15 @@
   function renderFlowers(el, flowers) {
     if (!el) return;
     el.innerHTML = '';
-    (flowers || []).forEach(function (c) { el.appendChild(makeTile(c, 'xxxs')); });
+    // 各家已摸到的花牌放大显示（尺寸由 .flowerrow 统一控制，矮屏自动收一档）
+    (flowers || []).forEach(function (c) { el.appendChild(makeTile(c, 'xs')); });
   }
 
-  /* ---------- 局面信息：剩余花牌 / 出牌按钮 ---------- */
+  /* ---------- 局面信息：剩余张数 / 出牌按钮 ---------- */
   function seenFlowerCount(v) {
     var n = 0;
     (v.players || []).forEach(function (p) { n += (p.flowers || []).length; });
     return n;
-  }
-
-  function renderFlowerLeft(v) {
-    var el = $('center-flower-left');
-    if (!el) return;
-    // 各家花牌区是公开信息；全集减去已亮出的，就是牌墙里还没翻出的花牌
-    var seen = {};
-    (v.players || []).forEach(function (p) {
-      (p.flowers || []).forEach(function (c) { seen[c] = (seen[c] || 0) + 1; });
-    });
-    var used = {}, left = [];
-    ALL_FLOWERS.forEach(function (c) {
-      used[c] = (used[c] || 0) + 1;
-      if (used[c] > (seen[c] || 0)) left.push(c);
-    });
-    var sig = v.round + ':' + left.join(',');
-    if (sig === flowerSig) return;
-    flowerSig = sig;
-    el.innerHTML = '';
-    left.forEach(function (c) { el.appendChild(makeTile(c, 'xxs')); });
   }
 
   function isPaused(v) {
